@@ -45,3 +45,7 @@ which release it follows.
 ## Licence
 
 AGPL-3.0, for the applications and for this repository.
+
+## Parameters
+
+Declared once with `pxs::params`, see `parameters.md`.

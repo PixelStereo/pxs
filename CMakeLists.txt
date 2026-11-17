@@ -16,6 +16,13 @@ add_library(pxs::osc ALIAS pxs_osc)
 target_include_directories(pxs_osc PUBLIC src/osc)
 target_link_libraries(pxs_osc PUBLIC Qt6::Core)
 
+# Parameters: how an application declares what can be read, written, saved and driven over OSC, and how the others
+# are told it changed (ChangeFeed). Qt Core only.
+add_library(pxs_params STATIC src/params/Parameter.cpp src/params/Parameter.h src/params/ChangeFeed.h)
+add_library(pxs::params ALIAS pxs_params)
+target_include_directories(pxs_params PUBLIC src/params)
+target_link_libraries(pxs_params PUBLIC Qt6::Core)
+
 # Widgets used by several applications: the slider field (drag, type, snap) and the color picker
 add_library(pxs_widgets STATIC src/widgets/SliderField.cpp src/widgets/SliderField.h
     src/widgets/ColorPicker.cpp src/widgets/ColorPicker.h)
@@ -29,6 +36,9 @@ if(PXS_BUILD_TESTS)
     add_executable(pxs_osc_test test/osc_test.cpp)
     target_link_libraries(pxs_osc_test PRIVATE pxs::osc)
     add_test(NAME osc COMMAND pxs_osc_test)
+    add_executable(pxs_params_test test/params_test.cpp)
+    target_link_libraries(pxs_params_test PRIVATE pxs::params)
+    add_test(NAME params COMMAND pxs_params_test)
     add_executable(pxs_widgets_test test/widgets_test.cpp)
     target_link_libraries(pxs_widgets_test PRIVATE pxs::widgets)
     add_test(NAME widgets COMMAND pxs_widgets_test)
