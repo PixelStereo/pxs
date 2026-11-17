@@ -19,7 +19,7 @@ Pin a tag, never a branch:
 
 ```cmake
 include(FetchContent)
-FetchContent_Declare(pxs GIT_REPOSITORY https://github.com/PixelStereo/pxs.git GIT_TAG v0.3.2)
+FetchContent_Declare(pxs GIT_REPOSITORY https://github.com/PixelStereo/pxs.git GIT_TAG v0.3.3)
 FetchContent_MakeAvailable(pxs)
 include(${pxs_SOURCE_DIR}/cmake/PixelStereoBuildId.cmake)
 target_link_libraries(MyApp PRIVATE pxs::osc pxs::widgets)
