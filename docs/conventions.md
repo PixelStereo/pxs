@@ -1,0 +1,47 @@
+# Conventions
+
+These rules apply to every Pixel Stereo application. The mechanisms are in this repository; an application only
+passes its own names.
+
+## The application carries its version in its name
+
+| Build | Name |
+|---|---|
+| a release (the tagged commit, nothing modified; any build made by CI on a tag) | `App 0.2.1` |
+| built 3 commits after the 0.2.1 release | `App 0.2.1+3` |
+| the same, with changes that are not committed | `App 0.2.1+3+` |
+
+The bundle (`App 0.2.1.app`), the Windows executable and the window title carry that name; the build writes it in
+`application.json` (`name`, `version`, `executable`) so that packaging scripts never rebuild it. Use
+`pxs_build_suffix()` and `pxs_nearest_release()` from `cmake/PixelStereoBuildId.cmake`. The number counted from is the
+nearest release tag, not a `VERSION` file that can lag behind (the file is synchronised after a release is published).
+The suffix is computed when CMake configures. A source archive without Git metadata has no suffix.
+
+## Downloads
+
+Release files carry the tag: `App-<platform>-<tag>.<ext>`.
+
+- **macOS: a zip with the application inside.** Never a DMG. Qt deployed into the bundle, every Mach-O file and bundle
+  signed ad hoc (without a valid signature an Apple Silicon Mac calls the download "damaged"), then
+  `ditto -c -k --keepParent` (Python's `zipfile` loses the symlinks the signature depends on). Check the zip, not the
+  folder: extract it, `codesign --verify --deep --strict`, launch it. See `scripts/package-macos.sh`.
+- **Windows: an installer**, `App-windows-x64-<tag>-Setup.exe`, built with `packaging/windows.nsi`.
+  - The user chooses: **all users (the default)**, or only the current user (no administrator rights needed).
+    Silent installs: `/S /AllUsers` or `/S /CurrentUser`, and `/D=<dir>` last.
+  - **Nothing else to install:** the Visual C++ runtime DLLs (`vcruntime140`, `vcruntime140_1`, `msvcp140`…) are next to
+    the executable, from the compiler's `Microsoft.VC*.CRT` redistributable folder. No `vc_redist` installer in the
+    package (use `windeployqt --no-compiler-runtime`), no prompt about Visual Studio.
+  - The payload goes in `<install dir>\app`, emptied before each install: the executable name carries the version, so an
+    upgrade must not leave the previous one beside the new one.
+  - The CI installs the result silently in a clean folder and starts what it installed.
+- **Linux**: an AppImage and a `tar.gz` where the application has a Linux version.
+
+## The README follows the releases
+
+`<!-- release-downloads:start -->` / `end` markers in the README, rewritten by a workflow when a release is published,
+from the newest release that has every file (a release being uploaded never produces dead links). The commit says
+which release it follows.
+
+## Licence
+
+AGPL-3.0, for the applications and for this repository.
