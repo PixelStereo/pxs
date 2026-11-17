@@ -8,7 +8,7 @@ option(PXS_BUILD_TESTS "Build the pxs tests" ${PROJECT_IS_TOP_LEVEL})
 # Build identity helpers (pxs_build_suffix, pxs_nearest_release): include(<pxs>/cmake/PixelStereoBuildId.cmake)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Widgets)
 
 # OSC 1.0 codec: messages, bundles, address patterns. Qt Core only.
 add_library(pxs_osc STATIC src/osc/OscCodec.cpp src/osc/OscCodec.h)
@@ -16,11 +16,22 @@ add_library(pxs::osc ALIAS pxs_osc)
 target_include_directories(pxs_osc PUBLIC src/osc)
 target_link_libraries(pxs_osc PUBLIC Qt6::Core)
 
+# Widgets used by several applications: the slider field (drag, type, snap) and the color picker
+add_library(pxs_widgets STATIC src/widgets/SliderField.cpp src/widgets/SliderField.h
+    src/widgets/ColorPicker.cpp src/widgets/ColorPicker.h)
+add_library(pxs::widgets ALIAS pxs_widgets)
+set_target_properties(pxs_widgets PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pxs_widgets PUBLIC src/widgets)
+target_link_libraries(pxs_widgets PUBLIC Qt6::Widgets)
+
 if(PXS_BUILD_TESTS)
     enable_testing()
     add_executable(pxs_osc_test test/osc_test.cpp)
     target_link_libraries(pxs_osc_test PRIVATE pxs::osc)
     add_test(NAME osc COMMAND pxs_osc_test)
+    add_executable(pxs_widgets_test test/widgets_test.cpp)
+    target_link_libraries(pxs_widgets_test PRIVATE pxs::widgets)
+    add_test(NAME widgets COMMAND pxs_widgets_test)
     add_test(NAME build_id COMMAND ${CMAKE_COMMAND} -DPXS_ROOT=${CMAKE_CURRENT_SOURCE_DIR}
              -P ${CMAKE_CURRENT_SOURCE_DIR}/test/build_id_test.cmake)
 endif()
