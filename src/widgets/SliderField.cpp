@@ -1,4 +1,6 @@
 #include "SliderField.h"
+
+#include <QLineEdit>
 #include <QApplication>
 #include <QDoubleSpinBox>
 #include <QMouseEvent>
