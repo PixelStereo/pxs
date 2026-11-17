@@ -25,6 +25,8 @@ public:
     void setCompact(bool on);          // a lower bar (the channels of a color)
     double value() const { return m_value; }
     bool isDragging() const { return m_drag; }
+    // Being dragged, or its number is being typed or dragged: a live value must not overwrite it meanwhile
+    bool isEditing() const;
     QSize sizeHint() const override { return QSize(220, 20); }
 
 signals:

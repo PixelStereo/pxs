@@ -213,3 +213,8 @@ void SliderField::mouseDoubleClickEvent(QMouseEvent *e)
     m_spin->setFocus(Qt::MouseFocusReason);
     m_spin->selectAll();
 }
+
+bool SliderField::isEditing() const
+{
+    return m_drag || m_numberDragging || m_spin->hasFocus() || (m_spin->lineEdit() && m_spin->lineEdit()->hasFocus());
+}
