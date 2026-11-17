@@ -13,7 +13,7 @@ passes its own names.
 
 The bundle (`App 0.2.1.app`), the Windows executable and the window title carry that name; the build writes it in
 `application.json` (`name`, `version`, `executable`) so that packaging scripts never rebuild it. Use
-`pxs_build_suffix()` and `pxs_nearest_release()` from `cmake/PixelStereoBuildId.cmake`. The number counted from is the
+`pxs_build_suffix()` and `pxs_nearest_release()` from `cmake/PixelStereoBuildId.cmake`, or `scripts/build_id.py` from a Python packager (CI must check out the tags: `fetch-depth: 0`). The number counted from is the
 nearest release tag, not a `VERSION` file that can lag behind (the file is synchronised after a release is published).
 The suffix is computed when CMake configures. A source archive without Git metadata has no suffix.
 

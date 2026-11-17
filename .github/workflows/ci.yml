@@ -22,6 +22,10 @@ jobs:
           cache: true
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build --config Release --parallel 3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s test -p 'test_build_id.py'
       - run: ctest --test-dir build -C Release --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen

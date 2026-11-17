@@ -7,6 +7,7 @@ Cold-Flame, MpOsc). Licensed under the GNU Affero General Public License v3.0 (s
 |---|---|
 | `src/osc` | `pxs::osc`: OSC 1.0 codec (messages, bundles, address patterns), Qt Core only |
 | `cmake/PixelStereoBuildId.cmake` | the application's version in its name: `0.2.1`, `0.2.1+3`, `0.2.1+3+` |
+| `scripts/build_id.py` | the same version for packagers that are not CMake |
 | `packaging/windows.nsi` | the Windows installer: all users by default, or the current user only |
 | `scripts/package-macos.sh` | the macOS zip: Qt deployed, ad-hoc signed, made with `ditto` |
 | `docs/conventions.md` | how the applications are named, built, packaged and released |
@@ -17,7 +18,7 @@ Pin a tag, never a branch:
 
 ```cmake
 include(FetchContent)
-FetchContent_Declare(pxs GIT_REPOSITORY https://github.com/PixelStereo/pxs.git GIT_TAG v0.1.1)
+FetchContent_Declare(pxs GIT_REPOSITORY https://github.com/PixelStereo/pxs.git GIT_TAG v0.2.0)
 FetchContent_MakeAvailable(pxs)
 include(${pxs_SOURCE_DIR}/cmake/PixelStereoBuildId.cmake)
 target_link_libraries(MyApp PRIVATE pxs::osc)
