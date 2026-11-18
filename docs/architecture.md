@@ -36,39 +36,45 @@ Un contrôleur matériel (MIDI, capteur, OSC entrant) est un **signal**.
 Le champ d'un paramètre vient de son type et de sa plage ; l'application ne le redessine pas.
 Les messages restent des boutons que **l'application place elle-même** ; il n'y a pas de menu d'actions automatique.
 
-## Mapping : un signal pilote un paramètre
+## Mapping : l'Interaction de NyxMap, pour toutes les applications
 
-Un mapping relie une **source** (un signal) à une **cible** (un paramètre, ou un message).
+Le mapping existe déjà dans NyxMap : c'est le panneau **Interaction** (son modèle est dans `Interactions.h`), avec le
+MIDI learn. On ne réinvente rien : on **extrait** ce modèle dans `pxs`, puis chaque application, NyxMap comprise, l'utilise
+depuis `pxs`.
 
-| Champ | Rôle |
-|---|---|
-| `source`, `target` | adresses dans l'arbre |
-| plage d'entrée → plage de sortie | la valeur du signal ramenée dans la plage de la cible |
-| inversion, courbe | |
-| lissage (attaque, relâchement, en secondes) | |
-| seuil avec hystérésis | pour une cible booléenne, un choix ou un message : un message part sur le front montant |
-| activé / désactivé | |
+Une **interaction** prend la valeur d'une **source** (clavier, MIDI, OSC, interne, audio ; un contrôleur est un signal),
+la passe dans une **chaîne de filtres** (Remap, Moyenne, Attack Release, Damper, Courbe, Math, Seuil, Toggle,
+Enveloppe…), applique le niveau maître, et l'envoie à la **cible**, qui la reçoit dans ses unités : un nombre, un
+interrupteur (à partir de 0,5), un choix (par son indice), une action (déclenchée au passage de 0,5).
+- **Reprise (pick-up) ou saut** quand la cible a été bougée par autre chose.
+- **Mode Action** : des conditions sur la valeur de la source, et ce qui se passe quand elles deviennent vraies ou
+  fausses.
+- Couleurs et points XY : chaque canal a sa propre chaîne.
+- Des **groupes** pour ranger la liste.
+- Les signaux ne sont jamais mémorisés ; seule l'interaction l'est.
 
-Règles :
-- Les signaux ne sont **jamais** mémorisés ; seul le **lien** l'est : une liste de mappings par adresse, en JSON.
-- Une cible **verrouillée** est ignorée. Un mapping dont une adresse n'existe plus **reste en sommeil** : il n'est pas
-  supprimé, il se réveille si l'adresse revient.
-- Reprise en douceur : tant que l'utilisateur tient la cible (`isEditing()`), le mapping ne la combat pas.
-- Mode apprentissage : on arme une cible, on bouge une source, le lien est créé.
-- Pas de boucle : un mapping ne se déclenche pas lui-même.
+**Décisions prises**
+- **Stockage** : `pxs` fournit le JSON (`Interaction::toJson` / `fromJson`) ; **l'application décide où il vit** (projet ou
+  réglages).
+- **Verrou** : il est **sauvegardé** avec ce que l'application sauvegarde. `pxs` fournit `lockedToJson` / `lockedFromJson`
+  (la liste des adresses verrouillées).
+- **Animer** : le drapeau `animatable` et la demande (le menu contextuel propose Animer ; l'application décide quoi en
+  faire : la timeline de NyxMap, rien ailleurs).
 
-**À valider : où est sauvegardée la liste ?** Je propose : `pxs` fournit le JSON (`mappingsToJson` / `mappingsFromJson`) ;
-**chaque application décide où il vit** (dans son projet, ou dans ses réglages). Rien n'est imposé par `pxs`.
+## Ce qui existe dans NyxMap et passe dans `pxs`
 
-## Animer
+Tes quatre idées sont en fait des choses que NyxMap a déjà. Le travail est une **extraction**, par étapes :
 
-Le drapeau `animatable` d'un paramètre dit qu'une timeline ou un fondu peut le piloter ; le menu contextuel propose
-**Animer** et le panneau émet une demande, que l'application traite.
+| Étape | Contenu | État |
+|---|---|---|
+| 1 | le modèle et le moteur de filtres des interactions (`Interactions.h`, `Anim.h`, graphe) : `pxs::interaction` | **fait** (tests : filtres, graphe) |
+| 2 | l'entrée MIDI (`Midi.h`, RtMidi) et le MIDI learn | à faire |
+| 3 | le panneau Interaction et le panneau de paramètres, rendus génériques sur l'arbre | à faire |
+| 4 | les presets (snapshots) par adresse | à faire |
+| 5 | le WebSocket `LISTEN` du serveur | à faire |
+| 6 | NyxMap utilise les versions de `pxs` et supprime ses copies | à faire, en dernier |
 
-**À valider : la portée.** La timeline n'existe que dans NyxMap. « Commun » veut dire :
-1. le drapeau et la demande (chaque application décide quoi en faire) ; ou
-2. en plus, un fondu commun d'une valeur à une autre sur une durée (déjà dans `Parameter::Ramp`) ; ou
-3. une vraie timeline partagée (gros chantier).
+Le filtre par signal de MpOsc (inversion, attaque, relâchement) devient une interaction de `pxs` (étape 3 pour son interface).
 
 ## Ce qui est déjà fait, et ce qui vient
 
@@ -78,17 +84,11 @@ Le drapeau `animatable` d'un paramètre dit qu'une timeline ou un fondu peut le 
 | service réseau (UDP, HTTP, mDNS) | fait (v0.13.0) |
 | liaison des widgets existants (`pxs::bind`) | fait (v0.13.0) |
 | libellé, verrou, réinitialisation, observateurs | fait, à publier (v0.14.0) |
-| mappings signal vers paramètre | à écrire après validation |
-| panneau commun de l'arbre (champs par type, menu contextuel, mappings) | à écrire après validation |
+| modèle des interactions (extrait de NyxMap) | fait, à publier |
+| MIDI, learn, panneaux, presets, `LISTEN` | voir le tableau des étapes |
 
-## Idées proposées, à trancher (aucune n'est construite)
+## Autres idées, pas encore décidées
 
-1. **Le filtre par signal de MpOsc** (inversion, attaque, relâchement) devient un mapping de `pxs` : une seule logique de
-   lissage dans toutes les applications.
-2. **Presets et instantanés par adresse** dans les six applications : `parametersToJson` existe déjà, il manque l'interface.
-3. **WebSocket `LISTEN`** dans le service réseau, pour que chaque application pousse ses valeurs en direct (aujourd'hui seulement NyxMap).
-4. **Entrée MIDI comme source de signaux**, avec l'apprentissage ci-dessus.
-5. **Un drapeau « interne »** sur un nœud, pour ne pas exposer à l'extérieur ce qui ne doit servir qu'à l'interface.
-6. **Limitation de débit** des signaux envoyés (par exemple 30 par seconde au plus par adresse).
-7. **Annuler / rétablir** pour les modifications faites dans le panneau.
-8. **Le verrou est-il sauvegardé ?** Aujourd'hui c'est un état de session. **À valider.**
+1. **Un drapeau « interne »** sur un nœud, pour ne pas exposer à l'extérieur ce qui ne sert qu'à l'interface.
+2. **Limitation de débit** des signaux envoyés (par exemple 30 par seconde au plus par adresse).
+3. **Annuler / rétablir** pour les modifications faites dans le panneau.
