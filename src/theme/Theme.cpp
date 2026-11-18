@@ -1,4 +1,4 @@
-#include "Theme.h"
+#include <pxs/Theme.h>
 
 #include <QApplication>
 #include <QPalette>

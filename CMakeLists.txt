@@ -24,7 +24,7 @@ target_include_directories(pxs_params PUBLIC src/params)
 target_link_libraries(pxs_params PUBLIC Qt6::Core)
 
 # The look: colour tokens, dark palettes, the style sheet every application shares
-add_library(pxs_theme STATIC src/theme/Theme.cpp src/theme/Theme.h)
+add_library(pxs_theme STATIC src/theme/Theme.cpp src/theme/pxs/Theme.h)
 add_library(pxs::theme ALIAS pxs_theme)
 target_include_directories(pxs_theme PUBLIC src/theme)
 target_link_libraries(pxs_theme PUBLIC Qt6::Widgets)
