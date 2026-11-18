@@ -29,6 +29,12 @@ add_library(pxs::theme ALIAS pxs_theme)
 target_include_directories(pxs_theme PUBLIC src/theme)
 target_link_libraries(pxs_theme PUBLIC Qt6::Widgets)
 
+# The address space: a tree of nodes carrying parameters, OSC messages applied to it, the OSCQuery description derived from it
+add_library(pxs_tree STATIC src/tree/Tree.cpp src/tree/pxs/Tree.h)
+add_library(pxs::tree ALIAS pxs_tree)
+target_include_directories(pxs_tree PUBLIC src/tree)
+target_link_libraries(pxs_tree PUBLIC pxs::osc pxs::params)
+
 # Widgets used by several applications: the slider field (drag, type, snap) and the color picker
 add_library(pxs_widgets STATIC src/widgets/Fields.cpp src/widgets/Fields.h src/widgets/SliderField.h
     src/widgets/ColorPicker.cpp src/widgets/ColorPicker.h)
@@ -45,6 +51,9 @@ if(PXS_BUILD_TESTS)
     add_executable(pxs_params_test test/params_test.cpp)
     target_link_libraries(pxs_params_test PRIVATE pxs::params)
     add_test(NAME params COMMAND pxs_params_test)
+    add_executable(pxs_tree_test test/tree_test.cpp)
+    target_link_libraries(pxs_tree_test PRIVATE pxs::tree)
+    add_test(NAME tree COMMAND pxs_tree_test)
     add_executable(pxs_theme_test test/theme_test.cpp)
     target_link_libraries(pxs_theme_test PRIVATE pxs::theme)
     add_test(NAME theme COMMAND pxs_theme_test)
