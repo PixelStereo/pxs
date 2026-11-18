@@ -19,15 +19,31 @@ START = "<!-- release-downloads:start -->"
 END = "<!-- release-downloads:end -->"
 TAG = re.compile(r"v?\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?")
 
-# platform -> (label, shields colour, logo, logo colour, os names seen in file names, suffixes by preference)
+# A platform is what a badge offers: a macOS zip per architecture, the Windows installer, Linux. `archs` are the
+# architectures of the file names that fit it (None: a name without one, from before the rule), best first.
 PLATFORMS = {
-    "mac": ("macOS", "34CC34", "apple", "white", ["macos", "mac"], [".zip", ".dmg"]),
-    "win": ("Windows", "CCCC34", "windows", "white", ["windows", "win"], ["-Setup.exe", "-setup.exe", ".exe", ".zip"]),
-    "linux": ("Linux", "CC3434", "linux", "111111", ["linux"], [".AppImage", ".tar.gz", ".deb"]),
-    "android": ("Android", "3DDC84", "android", "white", ["android"], [".apk"]),
-    "ios": ("iOS", "555555", "apple", "white", ["ios"], ["-unsigned.ipa", ".ipa"]),
+    "mac-arm": dict(label="macOS", sub="Apple Silicon", logo="apple", colour="6b7787", logo_colour="white",
+                    oses=["macos", "mac"], archs=["arm64", "universal", None], suffixes=[".zip", ".dmg"]),
+    "mac-intel": dict(label="macOS", sub="Intel", logo="apple", colour="515b69", logo_colour="white",
+                      oses=["macos", "mac"], archs=["x64", "x86_64", "amd64", "universal"], suffixes=[".zip", ".dmg"]),
+    "win": dict(label="Windows", sub="Installer", logo="windows", colour="2b6fb6", logo_colour="white",
+                oses=["windows", "win"], archs=["x64", "x86_64", "amd64", None, "arm64"],
+                suffixes=["-Setup.exe", "-setup.exe", ".exe", ".zip"]),
+    "linux": dict(label="Linux", sub="AppImage", logo="linux", colour="b8821c", logo_colour="white",
+                  oses=["linux"], archs=["x64", "x86_64", "amd64", None, "arm64"],
+                  suffixes=[".AppImage", ".tar.gz", ".deb"]),
+    "android": dict(label="Android", sub="APK", logo="android", colour="2f9e6a", logo_colour="white",
+                    oses=["android"], archs=["arm64", None], suffixes=[".apk"]),
+    "ios": dict(label="iOS", sub="IPA", logo="apple", colour="515b69", logo_colour="white",
+                oses=["ios"], archs=["arm64", None], suffixes=["-unsigned.ipa", ".ipa"]),
 }
-ARCH_PREFERENCE = ["arm64", "universal", "x64", "x86_64", "amd64"]
+# "mac" asks for both macOS badges, the Intel one only when the release has it
+ALIASES = {"mac": ["mac-arm", "mac-intel?"]}
+GRAPHITE = "1a1c20"
+KNOWN_ARCHS = ("arm64", "universal", "x64", "x86_64", "amd64")
+# What the badge says for a file of this kind (Linux)
+SUB_BY_SUFFIX = {".appimage": "AppImage", ".tar.gz": "Archive", ".deb": "Debian package", "-setup.exe": "Installer",
+                 ".exe": "Installer", ".zip": None, ".dmg": "Disk image"}
 
 
 def version(tag):
@@ -36,25 +52,40 @@ def version(tag):
     return (tuple(int(n or 0) for n in numbers.groups()) if numbers else (0, 0, 0)) + (stable,)
 
 
+def arch_of(name):
+    low = name.lower()
+    return next((a for a in KNOWN_ARCHS if f"-{a}-" in low), None)
+
+
 def pick(app, tag, platform, assets):
     """The best uploaded file for a platform, or None."""
-    _, _, _, _, oses, suffixes = PLATFORMS[platform]
+    spec = PLATFORMS[platform]
     best = None
     for name in assets:
         low = name.lower()
         if not low.startswith(app.lower() + "-") or tag.lower() not in low:
             continue
         rest = low[len(app) + 1:]
-        if not any(rest == o or rest.startswith(o + "-") for o in oses):
+        if not any(rest == o or rest.startswith(o + "-") for o in spec["oses"]):
             continue
-        suffix = next((i for i, s in enumerate(suffixes) if low.endswith(s.lower())), None)
-        if suffix is None:
+        suffix = next((i for i, s in enumerate(spec["suffixes"]) if low.endswith(s.lower())), None)
+        arch = arch_of(name)
+        if suffix is None or arch not in spec["archs"]:
             continue
-        arch = next((i for i, a in enumerate(ARCH_PREFERENCE) if f"-{a}-" in low), len(ARCH_PREFERENCE))
-        key = (suffix, arch, name)
+        key = (suffix, spec["archs"].index(arch), name)
         if best is None or key < best:
             best = key
     return best[2] if best else None
+
+
+def expand(platforms):
+    """(platform, optional) in order; "mac" stands for the two macOS badges."""
+    out = []
+    for item in platforms:
+        for entry in ALIASES.get(item, [item]):
+            optional = entry.endswith("?")
+            out.append((entry.rstrip("?"), optional))
+    return out
 
 
 def select(releases, app, repo, platforms):
@@ -67,9 +98,11 @@ def select(releases, app, repo, platforms):
             continue
         assets = {a["name"]: a for a in release.get("assets", []) if a.get("state") == "uploaded" and a.get("size", 0) > 0}
         urls = {}
-        for platform in platforms:
+        for platform, optional in expand(platforms):
             name = pick(app, tag, platform, assets)
             if not name:
+                if optional:
+                    continue
                 break
             urls[platform] = f"https://github.com/{repo}/releases/download/{tag}/{name}"
         else:
@@ -77,17 +110,29 @@ def select(releases, app, repo, platforms):
     raise ValueError("No published release has a file for every requested platform")
 
 
+def esc(text):
+    """Text for a shields.io badge path: a dash is doubled, a space is an underscore."""
+    return text.replace("-", "--").replace("_", "__").replace(" ", "_")
+
+
+def badge(platform, url):
+    spec = PLATFORMS[platform]
+    sub = spec["sub"]
+    if platform in ("linux", "win"):
+        kind = next((v for k, v in SUB_BY_SUFFIX.items() if url.lower().endswith(k) and v), None)
+        sub = kind or sub
+    return (f"[![{spec['label']} {spec['sub']}](https://img.shields.io/badge/{esc(spec['label'])}-{esc(sub)}-{spec['colour']}"
+            f"?style=for-the-badge&logo={spec['logo']}&logoColor={spec['logo_colour']}&labelColor={GRAPHITE})]({url})")
+
+
 def render(release, urls, repo, docs):
     tag = release["tag_name"]
     preview = " · PREVIEW" if release.get("prerelease") else ""
-    lines = [START, f"**LATEST VERSION · [{tag}{preview}](https://github.com/{repo}/releases/tag/{tag})**", ""]
-    for platform, url in urls.items():
-        label, colour, logo, logo_colour = PLATFORMS[platform][:4]
-        lines.append(f"[![{label}](https://img.shields.io/badge/{label}-Download-{colour}"
-                     f"?style=for-the-badge&logo={logo}&logoColor={logo_colour})]({url})")
+    lines = [START, f"**LATEST VERSION · [{tag}{preview}](https://github.com/{repo}/releases/tag/{tag})**", "",
+             "&nbsp;&nbsp;".join(badge(p, u) for p, u in urls.items())]
     if docs:
-        lines += ["", f'<a href="{docs}"><img alt="Documentation" src="https://img.shields.io/badge/documentation-blue'
-                      f'?style=for-the-badge&logo=material%20for%20mkdocs" height="28"></a>']
+        lines += ["", f'<a href="{docs}"><img alt="Documentation" src="https://img.shields.io/badge/Documentation-Read-3a3f47'
+                      f'?style=for-the-badge&logo=materialformkdocs&logoColor=white&labelColor={GRAPHITE}" height="28"></a>']
     lines.append(END)
     return "\n".join(lines)
 
@@ -108,12 +153,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--app", required=True)
     ap.add_argument("--repo", required=True, help="owner/name")
-    ap.add_argument("--platforms", default="mac,win", help="comma list among " + ",".join(PLATFORMS))
+    ap.add_argument("--platforms", default="mac,win", help="comma list among " + ",".join(PLATFORMS) + ", mac (arm, and Intel when there is one)")
     ap.add_argument("--docs", help="documentation URL, adds a badge")
     ap.add_argument("--root", default=".")
     args = ap.parse_args()
     platforms = [p.strip() for p in args.platforms.split(",") if p.strip()]
-    unknown = [p for p in platforms if p not in PLATFORMS]
+    unknown = [p for p, _ in expand(platforms) if p not in PLATFORMS]
     if unknown:
         sys.exit("unknown platform: " + ", ".join(unknown))
     data = json.load(sys.stdin)
