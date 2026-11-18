@@ -27,7 +27,7 @@ QVariant fromOsc(const ParamInfo &info, const QVariant &arg)
     case ParamInfo::Type::Int: return arg.canConvert<double>() ? QVariant(int(std::lround(arg.toDouble()))) : QVariant();
     case ParamInfo::Type::Bool: return arg.metaType().id() == QMetaType::QString ? QVariant() : QVariant(arg.toDouble() != 0 || arg.toBool());
     case ParamInfo::Type::Choice:
-        if (arg.metaType().id() == QMetaType::QString) return info.choices.contains(arg.toString()) ? arg : QVariant();
+        if (arg.metaType().id() == QMetaType::QString) { const QString key = arg.toString().toLower(); return info.choices.contains(key) ? QVariant(key) : QVariant(); }
         return info.choices.value(arg.toInt(), QString()).isEmpty() ? QVariant() : QVariant(info.choices.value(arg.toInt()));
     case ParamInfo::Type::Text: return arg.toString();
     case ParamInfo::Type::Trigger: return QVariant(true);

@@ -73,3 +73,29 @@ belong to the application; the tree gives them their content.
 `apply()` writes a parameter when its access allows it and the argument fits its type: a number for `Float` and `Int` (an
 `Int` is rounded), a switch for `Bool`, a key (or its index) for `Choice`, a string for `Text`, any message for a
 `Trigger`. A value that does not fit is ignored, never half applied; the parameter keeps it within its limits.
+
+## Making an application reachable: `pxs::oscquery` and `pxs::bind`
+
+Every application is reachable the same way. `OscService` opens the UDP port (what arrives is applied to the tree), the
+OSCQuery HTTP side and the mDNS announcement; what the application says (`fire`, `changed`) goes back to whoever wrote
+to it and to the targets added with `addTarget()`.
+
+```cpp
+pxs::Tree tree;
+pxs::OscService service(&tree, "MyApp");
+service.start(oscPort, httpPort);                 // 0: any free port
+```
+
+An interface that already has its widgets exposes them in one line each (`pxs/Bind.h`); writing from outside goes
+through the widget, so it does what a click does, and a user's change tells the tree (the feedback):
+
+```cpp
+pxs::bindToggle(tree, "/osc/send", sendButton, "Send the signals");     // parameter
+pxs::bindNumber(tree, "/detection/confidence", field, "Confidence");    // parameter, range from the field
+pxs::bindChoice(tree, "/analysis/size", combo);                         // parameter, keys = item texts in lowercase
+pxs::bindAction(tree, "/video/stop", stopButton);                       // message
+tree.addSignal("/face/head/yaw", "f");                                  // signal, then tree.fire(...)
+```
+
+What an application exposes is its choice, but never less than what a user can do in the interface: every control is a
+parameter or a message, every value the application computes for the outside is a signal.

@@ -273,6 +273,8 @@ void SliderField::mouseDoubleClickEvent(QMouseEvent *)
     m_spin->selectAll();
 }
 
+int SliderField::decimals() const { return m_spin->decimals(); }
+
 QRectF SliderField::bar() const { if (m_numberOnly) return QRectF(); return QRectF(0, 1, width() - m_spin->width() - 4, height() - 2); }
 
 void SliderField::setCompact(bool on) { setFixedHeight(on ? kFieldHeight - 4 : kFieldHeight); }

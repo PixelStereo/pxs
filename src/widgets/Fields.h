@@ -43,6 +43,9 @@ public:
     void setCompact(bool on);          // a lower bar (the channels of a color)
     void setNumberOnly(bool on);       // no bar: the number alone, dragged sideways to change it, double-clicked to type
     double value() const { return m_value; }
+    double minimum() const { return m_min; }
+    double maximum() const { return m_max; }
+    int decimals() const;
     bool isDragging() const { return m_drag; }
     // Being dragged, or its number is being typed or dragged: a live value must not overwrite it meanwhile
     bool isEditing() const;

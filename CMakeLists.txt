@@ -52,6 +52,13 @@ set_target_properties(pxs_widgets PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_COD
 target_include_directories(pxs_widgets PUBLIC src/widgets)
 target_link_libraries(pxs_widgets PUBLIC Qt6::Widgets)
 
+# Expose an interface's own widgets (check box, number field, menu, text field, button) as parameters and messages
+add_library(pxs_bind STATIC src/bind/Bind.cpp src/bind/pxs/Bind.h)
+add_library(pxs::bind ALIAS pxs_bind)
+set_target_properties(pxs_bind PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pxs_bind PUBLIC src/bind)
+target_link_libraries(pxs_bind PUBLIC pxs::tree pxs::widgets)
+
 if(PXS_BUILD_TESTS)
     enable_testing()
     add_executable(pxs_osc_test test/osc_test.cpp)
@@ -66,6 +73,9 @@ if(PXS_BUILD_TESTS)
     add_executable(pxs_oscquery_test test/oscquery_test.cpp)
     target_link_libraries(pxs_oscquery_test PRIVATE pxs::oscquery)
     add_test(NAME oscquery COMMAND pxs_oscquery_test)
+    add_executable(pxs_bind_test test/bind_test.cpp)
+    target_link_libraries(pxs_bind_test PRIVATE pxs::bind)
+    add_test(NAME bind COMMAND pxs_bind_test)
     add_executable(pxs_theme_test test/theme_test.cpp)
     target_link_libraries(pxs_theme_test PRIVATE pxs::theme)
     add_test(NAME theme COMMAND pxs_theme_test)
