@@ -32,7 +32,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m unittest discover -s test -p 'test_build_id.py'
+      - run: python -m unittest discover -s test -p 'test_*.py'
       - run: ctest --test-dir build -C Release --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen
@@ -51,7 +51,7 @@ jobs:
           fetch-depth: 0
       - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build
-      - run: python3 -m unittest discover -s test -p 'test_build_id.py'
+      - run: python3 -m unittest discover -s test -p 'test_*.py'
       - run: ctest --test-dir build --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen
