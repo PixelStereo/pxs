@@ -1,0 +1,81 @@
+# Reusable: keeps the README download badges and VERSION in step with the newest complete release.
+#
+#   name: Release downloads
+#   on:
+#     release: { types: [published, edited, deleted] }
+#     workflow_dispatch:
+#   permissions: { contents: write }
+#   jobs:
+#     update:
+#       uses: PixelStereo/pxs/.github/workflows/release-downloads.yml@v0.12.0
+#       with: { app: MpOsc, platforms: "mac,win", pxs-ref: v0.12.0 }
+name: Release downloads
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: Application name as it appears in the file names
+        required: true
+        type: string
+      platforms:
+        description: "Comma list: mac, win, linux, android, ios"
+        default: mac,win
+        type: string
+      docs:
+        description: Documentation URL (adds a badge)
+        default: ""
+        type: string
+      pxs-ref:
+        description: Tag of pxs that provides the script
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-downloads
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/checkout@v4
+        with:
+          repository: PixelStereo/pxs
+          ref: ${{ inputs.pxs-ref }}
+          path: .pxs-ci
+          persist-credentials: false
+      - name: Rewrite the README and VERSION from the latest complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          APP: ${{ inputs.app }}
+          PLATFORMS: ${{ inputs.platforms }}
+          DOCS: ${{ inputs.docs }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # A concurrent commit on the default branch is kept: start again from its head, never force.
+          for attempt in 1 2 3; do
+            git fetch origin "$DEFAULT_BRANCH"
+            git reset --hard "origin/$DEFAULT_BRANCH"
+            args=(--app "$APP" --repo "$GITHUB_REPOSITORY" --platforms "$PLATFORMS")
+            if [ -n "$DOCS" ]; then args+=(--docs "$DOCS"); fi
+            gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+              python3 .pxs-ci/scripts/release_downloads.py "${args[@]}" > "$RUNNER_TEMP/tag"
+            tag=$(cat "$RUNNER_TEMP/tag")
+            if git diff --quiet -- README.md VERSION; then exit 0; fi
+            git add README.md VERSION
+            git commit -m "docs: download links and version follow $tag"
+            if git push origin "HEAD:$DEFAULT_BRANCH"; then exit 0; fi
+          done
+          echo 'Could not update the README after three attempts' >&2
+          exit 1

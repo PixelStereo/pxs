@@ -49,9 +49,24 @@ accepts the older names of releases published before the rule, until a newer rel
 
 ## The README follows the releases
 
-`<!-- release-downloads:start -->` / `end` markers in the README, rewritten by a workflow when a release is published,
-from the newest release that has every file (a release being uploaded never produces dead links). The commit says
-which release it follows.
+`<!-- release-downloads:start -->` / `end` markers in the README (platform badges, as in NyxMap), rewritten together with
+`VERSION` when a release is published, from the newest release that has every requested file (a release being
+uploaded never produces dead links). The application's About box reads its version from the build, so it follows too.
+An application only calls the shared workflow:
+
+```yaml
+name: Release downloads
+on:
+  release: { types: [published, edited, deleted] }
+  workflow_dispatch:
+permissions: { contents: write }
+jobs:
+  update:
+    uses: PixelStereo/pxs/.github/workflows/release-downloads.yml@v0.12.0
+    with: { app: MpOsc, platforms: "mac,win", pxs-ref: v0.12.0 }   # platforms: mac, win, linux, android, ios
+```
+
+The script is `scripts/release_downloads.py`; the commit says which release it follows.
 
 ## Licence
 
