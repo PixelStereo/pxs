@@ -19,7 +19,8 @@ NEW = ["App-macos-arm64-v1.2.0.zip", "App-macos-x64-v1.2.0.zip", "App-windows-x6
 class ReleaseDownloads(unittest.TestCase):
     def test_prefers_arm64_installer_appimage(self):
         _, urls = rd.select([release("v1.2.0", NEW)], "App", "o/App", ["mac", "win", "linux"])
-        self.assertTrue(urls["mac"].endswith("App-macos-arm64-v1.2.0.zip"))
+        self.assertTrue(urls["mac-arm"].endswith("App-macos-arm64-v1.2.0.zip"))
+        self.assertTrue(urls["mac-intel"].endswith("App-macos-x64-v1.2.0.zip"))
         self.assertTrue(urls["win"].endswith("-Setup.exe"))
         self.assertTrue(urls["linux"].endswith(".AppImage"))
 
@@ -38,11 +39,13 @@ class ReleaseDownloads(unittest.TestCase):
     def test_legacy_names(self):
         legacy = ["App-macOS-arm64-v0.2.2.zip", "App-Windows-x64-v0.2.2-Setup.exe"]
         _, urls = rd.select([release("v0.2.2", legacy)], "App", "o/App", ["mac", "win"])
-        self.assertEqual(len(urls), 2)
+        self.assertEqual(sorted(urls), ["mac-arm", "win"])  # no Intel file: its badge is optional
+        _, old = rd.select([release("v5.0.8", ["App-macos-v5.0.8.zip"])], "App", "o/App", ["mac"])
+        self.assertTrue(old["mac-arm"].endswith("App-macos-v5.0.8.zip"))  # a name without an architecture is Apple Silicon
 
     def test_other_app_files_are_ignored(self):
         _, urls = rd.select([release("v1.2.0", NEW + ["App2-macos-arm64-v1.2.0.zip"])], "App", "o/App", ["mac"])
-        self.assertIn("App-macos-arm64", urls["mac"])
+        self.assertIn("App-macos-arm64", urls["mac-arm"])
 
     def test_update_rewrites_block_and_version(self):
         with tempfile.TemporaryDirectory() as d:
@@ -51,8 +54,10 @@ class ReleaseDownloads(unittest.TestCase):
             tag = rd.update(root, [release("v1.2.0", NEW)], "App", "o/App", ["mac", "win"], "https://x/")
             text = (root / "README.md").read_text()
             self.assertEqual(tag, "v1.2.0")
-            self.assertIn("img.shields.io/badge/macOS-Download", text)
-            self.assertIn("documentation", text)
+            self.assertIn("img.shields.io/badge/macOS-Apple_Silicon", text)
+            self.assertIn("img.shields.io/badge/macOS-Intel", text)
+            self.assertIn("img.shields.io/badge/Windows-Installer", text)
+            self.assertIn("Documentation", text)
             self.assertTrue(text.startswith("# App\n") and text.endswith("rest\n"))
             self.assertEqual((root / "VERSION").read_text(), "1.2.0\n")
 

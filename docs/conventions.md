@@ -32,7 +32,7 @@ Release files are named `<App>-<os>-<arch>-<tag><suffix>`, the same in every app
 not a release says `dev` in place of the tag. The README download links are rewritten from these names (the script
 accepts the older names of releases published before the rule, until a newer release exists).
 
-- **macOS: a zip with the application inside.** Never a DMG. Qt deployed into the bundle, every Mach-O file and bundle
+- **macOS: two zips, `arm64` (Apple Silicon) and `x64` (Intel), each with the application inside; runners `macos-latest` and `macos-15-intel`.** Never a DMG. Qt deployed into the bundle, every Mach-O file and bundle
   signed ad hoc (without a valid signature an Apple Silicon Mac calls the download "damaged"), then
   `ditto -c -k --keepParent` (Python's `zipfile` loses the symlinks the signature depends on). Check the zip, not the
   folder: extract it, `codesign --verify --deep --strict`, launch it. See `scripts/package-macos.sh`.
@@ -49,7 +49,7 @@ accepts the older names of releases published before the rule, until a newer rel
 
 ## The README follows the releases
 
-`<!-- release-downloads:start -->` / `end` markers in the README (platform badges, as in NyxMap), rewritten together with
+`<!-- release-downloads:start -->` / `end` markers in the README (graphite platform badges: macOS Apple Silicon, macOS Intel, Windows, Linux), rewritten together with
 `VERSION` when a release is published, from the newest release that has every requested file (a release being
 uploaded never produces dead links). The application's About box reads its version from the build, so it follows too.
 An application only calls the shared workflow:
@@ -63,7 +63,7 @@ permissions: { contents: write }
 jobs:
   update:
     uses: PixelStereo/pxs/.github/workflows/release-downloads.yml@v0.12.1
-    with: { app: MpOsc, platforms: "mac,win", pxs-ref: v0.12.1 }   # platforms: mac, win, linux, android, ios
+    with: { app: MpOsc, platforms: "mac,win", pxs-ref: v0.12.1 }   # platforms: mac (Apple Silicon, and Intel when the release has it), mac-arm, mac-intel, win, linux
 ```
 
 The script is `scripts/release_downloads.py`; the commit says which release it follows.
