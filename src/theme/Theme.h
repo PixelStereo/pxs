@@ -1,0 +1,35 @@
+#pragma once
+
+#include <QColor>
+#include <QString>
+
+class QApplication;
+
+// The look of the Pixel Stereo applications as colour tokens. An application picks a palette (always dark) and gives its
+// own style sheet written with the tokens; nothing in a style sheet is a literal colour.
+namespace pxs {
+
+struct Palette {
+    QColor window, base, alternate, button;    // surfaces: the window, fields and lists, odd rows and hover, buttons
+    QColor border, light, midlight, dark, shadow; // lines and bevels, from the brightest to the darkest
+    QColor fill;                               // what shows an active control (a checked button, a meter)
+    QColor link;                               // focus rings, links, the accent that must stand out
+    QColor text, muted, placeholder;           // text, secondary text and disabled controls, hints
+};
+
+// Neutral graphite greys: soft rounded controls with light borders, no colour cast.
+Palette graphite();
+// NyxMap's greys: the same steps, a little cooler, with a light accent.
+Palette nyxmap();
+
+// Replaces @text @muted @fill @button @base @alternate @border @focus @window @light @midlight in a style sheet.
+QString resolve(QString styleSheet, const Palette &palette);
+
+// The style sheet every application shares: group boxes named "section", checkable buttons named "toggle" and labels
+// named "caption".
+QString baseStyleSheet(const Palette &palette);
+
+// Sets the Fusion palette and the style sheet (base, then the application's own, tokens resolved).
+void apply(QApplication &app, const Palette &palette, const QString &applicationStyleSheet = {});
+
+} // namespace pxs

@@ -23,6 +23,12 @@ add_library(pxs::params ALIAS pxs_params)
 target_include_directories(pxs_params PUBLIC src/params)
 target_link_libraries(pxs_params PUBLIC Qt6::Core)
 
+# The look: colour tokens, dark palettes, the style sheet every application shares
+add_library(pxs_theme STATIC src/theme/Theme.cpp src/theme/Theme.h)
+add_library(pxs::theme ALIAS pxs_theme)
+target_include_directories(pxs_theme PUBLIC src/theme)
+target_link_libraries(pxs_theme PUBLIC Qt6::Widgets)
+
 # Widgets used by several applications: the slider field (drag, type, snap) and the color picker
 add_library(pxs_widgets STATIC src/widgets/SliderField.cpp src/widgets/SliderField.h
     src/widgets/ColorPicker.cpp src/widgets/ColorPicker.h)
@@ -39,6 +45,9 @@ if(PXS_BUILD_TESTS)
     add_executable(pxs_params_test test/params_test.cpp)
     target_link_libraries(pxs_params_test PRIVATE pxs::params)
     add_test(NAME params COMMAND pxs_params_test)
+    add_executable(pxs_theme_test test/theme_test.cpp)
+    target_link_libraries(pxs_theme_test PRIVATE pxs::theme)
+    add_test(NAME theme COMMAND pxs_theme_test)
     add_executable(pxs_widgets_test test/widgets_test.cpp)
     target_link_libraries(pxs_widgets_test PRIVATE pxs::widgets)
     add_test(NAME widgets COMMAND pxs_widgets_test)

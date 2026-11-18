@@ -49,3 +49,10 @@ AGPL-3.0, for the applications and for this repository.
 ## Parameters
 
 Declared once with `pxs::params`, see `parameters.md`.
+
+## The look
+
+Always dark (never a light theme, never following the system). A palette is a set of colour tokens (`pxs::graphite()`,
+`pxs::nyxmap()`); an application's own style sheet is written with the tokens (`@text`, `@muted`, `@fill`, `@border`,
+`@focus`…), never with literal colours, and handed to `pxs::apply()`. Checkable buttons are named `toggle`, group boxes
+`section`, small labels above a control `caption`, so the shared sheet styles them everywhere the same way.

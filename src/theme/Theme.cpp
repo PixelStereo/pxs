@@ -1,0 +1,77 @@
+#include "Theme.h"
+
+#include <QApplication>
+#include <QPalette>
+
+namespace pxs {
+
+Palette graphite()
+{
+    Palette p;
+    p.window = "#262628"; p.base = "#1e1e20"; p.alternate = "#323235"; p.button = "#313134";
+    p.border = "#7b7b82"; p.light = "#4c4c52"; p.midlight = "#3b3b40"; p.dark = "#141416"; p.shadow = "#0c0c0d";
+    p.fill = "#55555c"; p.link = "#d4d4d8";
+    p.text = "#f2f2f3"; p.muted = "#bdbdc2"; p.placeholder = "#bdbdc2";
+    return p;
+}
+
+Palette nyxmap()
+{
+    Palette p;
+    p.window = QColor(40, 40, 44); p.base = QColor(30, 30, 33); p.alternate = QColor(40, 40, 44); p.button = QColor(52, 52, 57);
+    p.border = "#62626e"; p.light = "#4c4c59"; p.midlight = "#383841"; p.dark = "#25252b"; p.shadow = QColor(18, 18, 20);
+    p.fill = "#4c4c59"; p.link = QColor(214, 214, 219);
+    p.text = QColor(225, 225, 228); p.muted = QColor(150, 150, 158); p.placeholder = QColor(130, 130, 135);
+    return p;
+}
+
+QString resolve(QString s, const Palette &p)
+{
+    return s.replace("@midlight", p.midlight.name()).replace("@alternate", p.alternate.name())
+        .replace("@window", p.window.name()).replace("@light", p.light.name())
+        .replace("@text", p.text.name()).replace("@muted", p.muted.name()).replace("@fill", p.fill.name())
+        .replace("@button", p.button.name()).replace("@base", p.base.name())
+        .replace("@border", p.border.name()).replace("@focus", p.link.name());
+}
+
+QString baseStyleSheet(const Palette &p)
+{
+    return resolve(QStringLiteral(R"(
+QGroupBox#section { border:1px solid @border; border-radius:8px; margin-top:9px; }
+QGroupBox#section::title { color:@text; subcontrol-origin:margin; left:11px; padding:0 5px; font-weight:600; }
+QLabel#caption { color:@muted; }
+QPushButton#toggle { background:@button; color:@text; border:1px solid @border; border-radius:6px; padding:5px 9px; }
+QPushButton#toggle:hover, QPushButton#toggle:focus { border-color:@focus; }
+QPushButton#toggle:checked { background:@fill; color:@text; border-color:@focus; font-weight:600; }
+QPushButton#toggle:disabled { color:@muted; }
+)"), p);
+}
+
+void apply(QApplication &app, const Palette &p, const QString &applicationStyleSheet)
+{
+    QPalette palette;
+    palette.setColor(QPalette::Window, p.window);
+    palette.setColor(QPalette::Base, p.base);
+    palette.setColor(QPalette::AlternateBase, p.alternate);
+    palette.setColor(QPalette::Button, p.button);
+    palette.setColor(QPalette::Mid, p.border);
+    palette.setColor(QPalette::Light, p.light);
+    palette.setColor(QPalette::Midlight, p.midlight);
+    palette.setColor(QPalette::Dark, p.dark);
+    palette.setColor(QPalette::Shadow, p.shadow);
+    palette.setColor(QPalette::Highlight, p.fill);
+    palette.setColor(QPalette::Link, p.link);
+    palette.setColor(QPalette::LinkVisited, p.muted);
+    palette.setColor(QPalette::ToolTipBase, p.base);
+    palette.setColor(QPalette::ToolTipText, p.text);
+    palette.setColor(QPalette::PlaceholderText, p.placeholder);
+    for (const auto role : {QPalette::WindowText, QPalette::Text, QPalette::ButtonText, QPalette::HighlightedText}) {
+        palette.setColor(role, p.text);
+        palette.setColor(QPalette::Disabled, role, p.muted);
+    }
+    palette.setColor(QPalette::Disabled, QPalette::Highlight, p.alternate);
+    app.setPalette(palette);
+    app.setStyleSheet(baseStyleSheet(p) + resolve(applicationStyleSheet, p));
+}
+
+} // namespace pxs
