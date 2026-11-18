@@ -30,7 +30,7 @@ target_include_directories(pxs_theme PUBLIC src/theme)
 target_link_libraries(pxs_theme PUBLIC Qt6::Widgets)
 
 # Widgets used by several applications: the slider field (drag, type, snap) and the color picker
-add_library(pxs_widgets STATIC src/widgets/SliderField.cpp src/widgets/SliderField.h
+add_library(pxs_widgets STATIC src/widgets/Fields.cpp src/widgets/Fields.h src/widgets/SliderField.h
     src/widgets/ColorPicker.cpp src/widgets/ColorPicker.h)
 add_library(pxs::widgets ALIAS pxs_widgets)
 set_target_properties(pxs_widgets PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)

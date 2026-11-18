@@ -1,6 +1,6 @@
 // Color picker adapted from NyxMap (GPL-3.0).
 #include "ColorPicker.h"
-#include "SliderField.h"
+#include "Fields.h"
 
 #include <QGridLayout>
 #include <QDialog>

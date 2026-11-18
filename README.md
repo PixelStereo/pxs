@@ -8,7 +8,7 @@ Cold-Flame, MpOsc). Licensed under the GNU Affero General Public License v3.0 (s
 | `src/osc` | `pxs::osc`: OSC 1.0 codec (messages, bundles, address patterns), Qt Core only |
 | `src/params` | `pxs::params`: how a parameter is declared (`Parameter`, `ParamInfo`) and how the others are told it changed (`ChangeFeed`); see `docs/parameters.md` |
 | `src/theme` | `pxs::theme`: colour tokens, the `graphite` and `nyxmap` dark palettes, the shared style sheet (sections, toggles, captions, tabs), `pxs::apply()` (also sets Fusion, the check boxes and radio buttons); `#include <pxs/Theme.h>` |
-| `src/widgets` | `pxs::widgets`: `SliderField` (drag, type a value, snaps, gradient bar) and `ColorPicker` (RGB, HSV, HSL, wheel, palette), Qt Widgets only |
+| `src/widgets` | `pxs::widgets`: the number fields (`SliderField`, `RangeField`, `NumberBox`, `IntBox`, from NyxMap) and `ColorPicker` (RGB, HSV, HSL, wheel, palette), Qt Widgets only |
 | `cmake/PixelStereoBuildId.cmake` | the application's version in its name: `0.2.1`, `0.2.1+3`, `0.2.1+3+` |
 | `scripts/build_id.py` | the same version for packagers that are not CMake |
 | `packaging/windows.nsi` | the Windows installer: all users by default, or the current user only |
