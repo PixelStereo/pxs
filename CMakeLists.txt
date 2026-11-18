@@ -8,7 +8,7 @@ option(PXS_BUILD_TESTS "Build the pxs tests" ${PROJECT_IS_TOP_LEVEL})
 # Build identity helpers (pxs_build_suffix, pxs_nearest_release): include(<pxs>/cmake/PixelStereoBuildId.cmake)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Widgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets)
 
 # OSC 1.0 codec: messages, bundles, address patterns. Qt Core only.
 add_library(pxs_osc STATIC src/osc/OscCodec.cpp src/osc/OscCodec.h)

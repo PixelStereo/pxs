@@ -36,3 +36,22 @@ jobs:
       - run: ctest --test-dir build -C Release --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen
+
+  # The oldest Qt the applications build with: Debian bookworm's packages (6.4)
+  oldest-qt:
+    runs-on: ubuntu-latest
+    container: debian:bookworm
+    steps:
+      - name: Dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git build-essential cmake ninja-build qt6-base-dev libqt6opengl6-dev libgl1-mesa-dev python3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build
+      - run: python3 -m unittest discover -s test -p 'test_build_id.py'
+      - run: ctest --test-dir build --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen

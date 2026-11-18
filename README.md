@@ -27,7 +27,7 @@ include(${pxs_SOURCE_DIR}/cmake/PixelStereoBuildId.cmake)
 target_link_libraries(MyApp PRIVATE pxs::osc pxs::params pxs::theme pxs::widgets)
 ```
 
-Qt 6.8 or later, C++17.
+Qt 6.4 or later, C++17.
 
 ## Migrating an application
 
