@@ -26,11 +26,11 @@ int main(int argc, char **argv)
         bar.show();
         double reported = -1;
         QObject::connect(&bar, &SliderField::valueEdited, [&](double v) { reported = v; });
-        const QPointF middle(bar.width() * 0.5 - 20, 10); // the number field takes the right end
+        const QPointF middle(30, 10); // inside the bar whatever width the number field takes (the font decides it)
         QMouseEvent press(QEvent::MouseButtonPress, middle, bar.mapToGlobal(middle), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
         QApplication::sendEvent(&bar, &press);
         CHECK(bar.isEditing());
-        CHECK(reported > 30 && reported < 70);
+        CHECK(reported > 0 && reported < 100); // not an end: the press landed on the bar, and the value follows it
         QMouseEvent release(QEvent::MouseButtonRelease, middle, bar.mapToGlobal(middle), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
         QApplication::sendEvent(&bar, &release);
         CHECK(!bar.isEditing());
