@@ -2,6 +2,9 @@
 
 #include <QApplication>
 #include <QPalette>
+#include <QProxyStyle>
+#include <QStyle>
+#include <QStyleFactory>
 #include <cstdio>
 
 static int failures = 0;
@@ -21,6 +24,14 @@ int main(int argc, char **argv)
         pxs::apply(app, palette, "QLineEdit { background:@alternate; }");
         CHECK(app.palette().color(QPalette::Window) == palette.window);
         CHECK(app.styleSheet().contains(palette.alternate.name()));
+        CHECK(app.styleSheet().contains("QTabBar::tab:selected")); // the tabs are part of the shared sheet
     }
+    // An application's own proxy style survives, even when the colours are applied again
+    app.setProperty("pxs_styled", false);
+    auto *own = new QProxyStyle(QStyleFactory::create("Fusion"));
+    app.setStyle(own);
+    pxs::apply(app, pxs::graphite());
+    pxs::apply(app, pxs::nyxmap());
+    CHECK(qobject_cast<QProxyStyle *>(QApplication::style()) == nullptr || QApplication::style() == own);
     return failures ? 1 : 0;
 }

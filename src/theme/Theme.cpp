@@ -2,6 +2,9 @@
 
 #include <QApplication>
 #include <QPalette>
+#include <QProxyStyle>
+#include <QStyle>
+#include <QStyleFactory>
 
 namespace pxs {
 
@@ -28,6 +31,7 @@ Palette nyxmap()
 QString resolve(QString s, const Palette &p)
 {
     return s.replace("@midlight", p.midlight.name()).replace("@alternate", p.alternate.name())
+        .replace("@shadow", p.shadow.name()).replace("@dark", p.dark.name())
         .replace("@window", p.window.name()).replace("@light", p.light.name())
         .replace("@text", p.text.name()).replace("@muted", p.muted.name()).replace("@fill", p.fill.name())
         .replace("@button", p.button.name()).replace("@base", p.base.name())
@@ -44,11 +48,25 @@ QPushButton#toggle { background:@button; color:@text; border:1px solid @border; 
 QPushButton#toggle:hover, QPushButton#toggle:focus { border-color:@focus; }
 QPushButton#toggle:checked { background:@fill; color:@text; border-color:@focus; font-weight:600; }
 QPushButton#toggle:disabled { color:@muted; }
+QTabWidget::pane { border:1px solid @border; }
+QTabBar::tab { background:@base; color:@muted; padding:5px 9px; margin-right:3px; font-weight:600;
+    border:1px solid @border; border-bottom:3px solid @midlight; border-top-left-radius:4px; border-top-right-radius:4px; }
+QTabBar::tab:selected { background:@light; color:@text; border-bottom-color:@focus; }
+QTabBar::tab:hover:!selected { background:@midlight; color:@text; }
+QTabBar::tab:disabled { color:@border; border-color:@midlight; }
 )"), p);
 }
 
 void apply(QApplication &app, const Palette &p, const QString &applicationStyleSheet)
 {
+    // Fusion draws the same on every platform and follows the palette. Chosen once, the first time: an application that
+    // installed a style of its own (a proxy around Fusion: its own check boxes…) keeps it, and a later call only changes
+    // the colours.
+    if (!app.property("pxs_styled").toBool()) {
+        if (!qobject_cast<QProxyStyle *>(app.style()) && app.style()->name().compare(QLatin1String("fusion"), Qt::CaseInsensitive) != 0)
+            app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+        app.setProperty("pxs_styled", true);
+    }
     QPalette palette;
     palette.setColor(QPalette::Window, p.window);
     palette.setColor(QPalette::Base, p.base);

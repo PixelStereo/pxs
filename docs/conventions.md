@@ -55,4 +55,4 @@ Declared once with `pxs::params`, see `parameters.md`.
 Always dark (never a light theme, never following the system). A palette is a set of colour tokens (`pxs::graphite()`,
 `pxs::nyxmap()`); an application's own style sheet is written with the tokens (`@text`, `@muted`, `@fill`, `@border`,
 `@focus`…), never with literal colours, and handed to `pxs::apply()`. Checkable buttons are named `toggle`, group boxes
-`section`, small labels above a control `caption`, so the shared sheet styles them everywhere the same way.
+`section`, small labels above a control `caption`, so the shared sheet styles them everywhere the same way. Tabs are part of that sheet too (recessed tab, raised selected tab with the accent underline): do not restyle them per application. The Fusion style is set by `pxs::apply()`, unless the application installs a proxy style of its own first.

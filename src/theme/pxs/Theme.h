@@ -22,14 +22,15 @@ Palette graphite();
 // NyxMap's greys: the same steps, a little cooler, with a light accent.
 Palette nyxmap();
 
-// Replaces @text @muted @fill @button @base @alternate @border @focus @window @light @midlight in a style sheet.
+// Replaces @text @muted @fill @button @base @alternate @border @focus @window @light @midlight @dark @shadow in a style sheet.
 QString resolve(QString styleSheet, const Palette &palette);
 
-// The style sheet every application shares: group boxes named "section", checkable buttons named "toggle" and labels
-// named "caption".
+// The style sheet every application shares: group boxes named "section", checkable buttons named "toggle", labels named
+// "caption", and the tabs (a recessed tab, the selected one raised with the accent underline).
 QString baseStyleSheet(const Palette &palette);
 
-// Sets the Fusion palette and the style sheet (base, then the application's own, tokens resolved).
+// Sets the Fusion style (unless the application installed a proxy style of its own), the palette and the style sheet
+// (base, then the application's own, tokens resolved).
 void apply(QApplication &app, const Palette &palette, const QString &applicationStyleSheet = {});
 
 } // namespace pxs
