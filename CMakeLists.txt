@@ -8,7 +8,7 @@ option(PXS_BUILD_TESTS "Build the pxs tests" ${PROJECT_IS_TOP_LEVEL})
 # Build identity helpers (pxs_build_suffix, pxs_nearest_release): include(<pxs>/cmake/PixelStereoBuildId.cmake)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets Network)
 
 # OSC 1.0 codec: messages, bundles, address patterns. Qt Core only.
 add_library(pxs_osc STATIC src/osc/OscCodec.cpp src/osc/OscCodec.h)
@@ -35,6 +35,15 @@ add_library(pxs::tree ALIAS pxs_tree)
 target_include_directories(pxs_tree PUBLIC src/tree)
 target_link_libraries(pxs_tree PUBLIC pxs::osc pxs::params)
 
+# OSC and OSCQuery over the network: UDP in and out, the HTTP side, the mDNS announcement. Every application is
+# reachable the same way.
+add_library(pxs_oscquery STATIC src/oscquery/QueryServer.cpp src/oscquery/MdnsResponder.cpp src/oscquery/OscService.cpp
+    src/oscquery/pxs/QueryServer.h src/oscquery/pxs/MdnsResponder.h src/oscquery/pxs/OscService.h)
+add_library(pxs::oscquery ALIAS pxs_oscquery)
+set_target_properties(pxs_oscquery PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pxs_oscquery PUBLIC src/oscquery)
+target_link_libraries(pxs_oscquery PUBLIC pxs::tree Qt6::Network)
+
 # Widgets used by several applications: the slider field (drag, type, snap) and the color picker
 add_library(pxs_widgets STATIC src/widgets/Fields.cpp src/widgets/Fields.h src/widgets/SliderField.h
     src/widgets/ColorPicker.cpp src/widgets/ColorPicker.h)
@@ -42,6 +51,13 @@ add_library(pxs::widgets ALIAS pxs_widgets)
 set_target_properties(pxs_widgets PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
 target_include_directories(pxs_widgets PUBLIC src/widgets)
 target_link_libraries(pxs_widgets PUBLIC Qt6::Widgets)
+
+# Expose an interface's own widgets (check box, number field, menu, text field, button) as parameters and messages
+add_library(pxs_bind STATIC src/bind/Bind.cpp src/bind/pxs/Bind.h)
+add_library(pxs::bind ALIAS pxs_bind)
+set_target_properties(pxs_bind PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pxs_bind PUBLIC src/bind)
+target_link_libraries(pxs_bind PUBLIC pxs::tree pxs::widgets)
 
 if(PXS_BUILD_TESTS)
     enable_testing()
@@ -54,6 +70,12 @@ if(PXS_BUILD_TESTS)
     add_executable(pxs_tree_test test/tree_test.cpp)
     target_link_libraries(pxs_tree_test PRIVATE pxs::tree)
     add_test(NAME tree COMMAND pxs_tree_test)
+    add_executable(pxs_oscquery_test test/oscquery_test.cpp)
+    target_link_libraries(pxs_oscquery_test PRIVATE pxs::oscquery)
+    add_test(NAME oscquery COMMAND pxs_oscquery_test)
+    add_executable(pxs_bind_test test/bind_test.cpp)
+    target_link_libraries(pxs_bind_test PRIVATE pxs::bind)
+    add_test(NAME bind COMMAND pxs_bind_test)
     add_executable(pxs_theme_test test/theme_test.cpp)
     target_link_libraries(pxs_theme_test PRIVATE pxs::theme)
     add_test(NAME theme COMMAND pxs_theme_test)

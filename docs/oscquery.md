@@ -15,6 +15,25 @@ tree.attribute("/layer/1/opacity", "VALUE", out);  // one attribute (?VALUE); ou
 pxs::Tree::message(*tree.find("/layer/1/enable")); // the OSC message that says what a parameter holds (the feedback)
 ```
 
+## Three kinds of leaf, the same in every application
+
+| Kind | State | Made with | OSCQuery |
+|---|---|---|---|
+| **parameter** | yes: read, written, saved, tells when it changes | `add(path, Parameter)`, or filled by hand | ACCESS 1 to 3, `VALUE`, `RANGE` |
+| **message** (action) | none: received, does something | `addMessage(path, "i", handler)` | ACCESS 2, `TYPE`, `PXS_KIND: "message"`, no `VALUE` |
+| **signal** (controller output) | none: the application emits it, nobody writes it | `addSignal(path, "f")`, then `fire(path, {args})` | ACCESS 1, `TYPE`, `PXS_KIND: "signal"`, no `VALUE` |
+
+```cpp
+tree.addMessage("/show/go", "i", [&](const QVariantList &a) { goTo(a.value(0).toInt()); return true; }, "Go to a cue");
+tree.addSignal("/detect/peak", "f", "A peak was heard");
+tree.setOutput([&](const osc::Message &m) { sendToClients(m); });  // set once, by the service that sends
+tree.fire("/detect/peak", {0.8});     // a signal goes to the output
+tree.changed("/layer/1/opacity");     // a parameter's new value goes to the output (the feedback)
+```
+
+A message with no argument has the type `N`. Everything an application says (a signal, a parameter's feedback) goes
+through the same output, so a client that listens hears all three the same way. A `Trigger` parameter is a message.
+
 A node can also be filled in by hand, for an application that already has its own way to read and write a value:
 
 ```cpp
@@ -54,3 +73,30 @@ belong to the application; the tree gives them their content.
 `apply()` writes a parameter when its access allows it and the argument fits its type: a number for `Float` and `Int` (an
 `Int` is rounded), a switch for `Bool`, a key (or its index) for `Choice`, a string for `Text`, any message for a
 `Trigger`. A value that does not fit is ignored, never half applied; the parameter keeps it within its limits.
+
+## Making an application reachable: `pxs::oscquery` and `pxs::bind`
+
+Every application is reachable the same way. `OscService` opens the UDP port (what arrives is applied to the tree), the
+OSCQuery HTTP side and the mDNS announcement. What the application says goes back over UDP: a parameter's feedback
+(`changed`) to the senders that wrote to it and to the targets, a signal (`fire`) to the targets only (`addTarget()`:
+the application's own destinations), so that writing a parameter never subscribes anyone to a stream.
+
+```cpp
+pxs::Tree tree;
+pxs::OscService service(&tree, "MyApp");
+service.start(oscPort, httpPort);                 // 0: any free port
+```
+
+An interface that already has its widgets exposes them in one line each (`pxs/Bind.h`); writing from outside goes
+through the widget, so it does what a click does, and a user's change tells the tree (the feedback):
+
+```cpp
+pxs::bindToggle(tree, "/osc/send", sendButton, "Send the signals");     // parameter
+pxs::bindNumber(tree, "/detection/confidence", field, "Confidence");    // parameter, range from the field
+pxs::bindChoice(tree, "/analysis/size", combo);                         // parameter, keys = item texts in lowercase
+pxs::bindAction(tree, "/video/stop", stopButton);                       // message
+tree.addSignal("/face/head/yaw", "f");                                  // signal, then tree.fire(...)
+```
+
+What an application exposes is its choice, but never less than what a user can do in the interface: every control is a
+parameter or a message, every value the application computes for the outside is a signal.
