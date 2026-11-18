@@ -4,6 +4,9 @@
 #include <QString>
 
 class QApplication;
+class QPainter;
+class QPalette;
+class QRectF;
 
 // The look of the Pixel Stereo applications as colour tokens. An application picks a palette (always dark) and gives its
 // own style sheet written with the tokens; nothing in a style sheet is a literal colour.
@@ -28,6 +31,11 @@ QString resolve(QString styleSheet, const Palette &palette);
 // The style sheet every application shares: group boxes named "section", checkable buttons named "toggle", labels named
 // "caption", and the tabs (a recessed tab, the selected one raised with the accent underline).
 QString baseStyleSheet(const Palette &palette);
+
+// A check box: a dark rounded square with a light edge, and the accent (the palette's Link colour) as a filled square
+// inside when it is on, a bar when it is partly on. Every QCheckBox and every checkable list or tree row of the
+// application is drawn this way (pxs::apply installs the style that calls it); custom widgets can call it directly.
+void paintCheck(QPainter &painter, const QRectF &box, bool on, bool partial, bool hover, bool enabled, const QPalette &palette);
 
 // Sets the Fusion style (unless the application installed a proxy style of its own), the palette and the style sheet
 // (base, then the application's own, tokens resolved).

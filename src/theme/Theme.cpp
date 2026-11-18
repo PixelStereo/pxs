@@ -1,10 +1,13 @@
 #include <pxs/Theme.h>
 
 #include <QApplication>
+#include <QPainter>
 #include <QPalette>
 #include <QProxyStyle>
 #include <QStyle>
 #include <QStyleFactory>
+#include <QStyleOption>
+#include <algorithm>
 
 namespace pxs {
 
@@ -57,14 +60,57 @@ QTabBar::tab:disabled { color:@border; border-color:@midlight; }
 )"), p);
 }
 
+void paintCheck(QPainter &painter, const QRectF &box, bool on, bool partial, bool hover, bool enabled, const QPalette &palette)
+{
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing);
+    QColor accent = palette.color(QPalette::Link);
+    const QColor edge = hover ? palette.color(QPalette::Link).darker(135) : palette.color(QPalette::Mid);
+    QColor line = on || partial ? accent : edge;
+    if (!enabled) {
+        accent.setAlphaF(0.45f);
+        line.setAlphaF(0.45f);
+    }
+    painter.setPen(QPen(line, 1.2));
+    painter.setBrush(palette.color(QPalette::Base).darker(115));
+    painter.drawRoundedRect(box.adjusted(0.6, 0.6, -0.6, -0.6), 3, 3);
+    if (on || partial) {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(accent);
+        const QRectF inner = box.adjusted(3.2, 3.2, -3.2, -3.2);
+        painter.drawRoundedRect(partial && !on ? QRectF(inner.left(), inner.center().y() - 1.5, inner.width(), 3) : inner, 1.5, 1.5);
+    }
+    painter.restore();
+}
+
+namespace {
+// Fusion, with the check boxes (and the checkable rows of lists and trees) drawn by paintCheck
+class CheckStyle : public QProxyStyle {
+public:
+    using QProxyStyle::QProxyStyle;
+    void drawPrimitive(PrimitiveElement element, const QStyleOption *option, QPainter *painter, const QWidget *widget = nullptr) const override
+    {
+        if (element == PE_IndicatorCheckBox || element == PE_IndicatorItemViewItemCheck) {
+            const QRectF r(option->rect);
+            const double side = std::min(r.width(), r.height());
+            const QRectF box(r.center().x() - side / 2, r.center().y() - side / 2, side, side);
+            paintCheck(*painter, box, option->state & State_On, option->state & State_NoChange, option->state & State_MouseOver,
+                       option->state & State_Enabled, option->palette);
+            return;
+        }
+        QProxyStyle::drawPrimitive(element, option, painter, widget);
+    }
+};
+} // namespace
+
 void apply(QApplication &app, const Palette &p, const QString &applicationStyleSheet)
 {
-    // Fusion draws the same on every platform and follows the palette. Chosen once, the first time: an application that
+    // Fusion draws the same on every platform and follows the palette; the check boxes are ours. Chosen once, the first time: an application that
     // installed a style of its own (a proxy around Fusion: its own check boxes…) keeps it, and a later call only changes
     // the colours.
     if (!app.property("pxs_styled").toBool()) {
-        if (!qobject_cast<QProxyStyle *>(app.style()) && app.style()->name().compare(QLatin1String("fusion"), Qt::CaseInsensitive) != 0)
-            app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+        if (!qobject_cast<QProxyStyle *>(app.style()))
+            app.setStyle(new CheckStyle(QStyleFactory::create(QStringLiteral("Fusion"))));
         app.setProperty("pxs_styled", true);
     }
     QPalette palette;

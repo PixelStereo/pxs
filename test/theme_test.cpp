@@ -1,6 +1,8 @@
 #include <pxs/Theme.h>
 
 #include <QApplication>
+#include <QCheckBox>
+#include <QImage>
 #include <QPalette>
 #include <QProxyStyle>
 #include <QStyle>
@@ -25,6 +27,19 @@ int main(int argc, char **argv)
         CHECK(app.palette().color(QPalette::Window) == palette.window);
         CHECK(app.styleSheet().contains(palette.alternate.name()));
         CHECK(app.styleSheet().contains("QTabBar::tab:selected")); // the tabs are part of the shared sheet
+    }
+    // A check box that is on shows the accent: a pixel of the accent colour is painted inside its indicator
+    {
+        pxs::apply(app, pxs::graphite());
+        QCheckBox box("on");
+        box.setChecked(true);
+        box.resize(box.sizeHint());
+        const QImage image = box.grab().toImage();
+        bool accentSeen = false;
+        for (int y = 0; y < image.height() && !accentSeen; ++y)
+            for (int x = 0; x < image.width(); ++x)
+                if (image.pixelColor(x, y) == pxs::graphite().link) { accentSeen = true; break; }
+        CHECK(accentSeen);
     }
     // An application's own proxy style survives, even when the colours are applied again
     app.setProperty("pxs_styled", false);
