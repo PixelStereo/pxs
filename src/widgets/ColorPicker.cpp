@@ -1,4 +1,3 @@
-// Color picker adapted from NyxMap (GPL-3.0).
 #include "ColorPicker.h"
 #include "Fields.h"
 
@@ -210,6 +209,7 @@ ColorPicker::ColorPicker(bool withAlpha, QWidget *parent) : QWidget(parent), m_w
         m_labels[i] = new QLabel;
         m_labels[i]->setFixedWidth(15);
         m_fields[i] = new SliderField;
+        m_fields[i]->setCompact(true);
         m_fields[i]->setRange(0, 255);
         m_fields[i]->setDecimals(0);
         m_fields[i]->setSingleStep(1);
@@ -236,6 +236,7 @@ ColorPicker::ColorPicker(bool withAlpha, QWidget *parent) : QWidget(parent), m_w
         auto *name = new QLabel(QStringLiteral("A"));
         name->setFixedWidth(15);
         m_wheelAlpha = new SliderField;
+        m_wheelAlpha->setCompact(true);
         m_wheelAlpha->setRange(0, 255);
         m_wheelAlpha->setDecimals(0);
         m_wheelAlpha->setSingleStep(1);
