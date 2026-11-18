@@ -99,6 +99,37 @@ int main(int argc, char **argv)
         tree.add("/raw", std::move(raw));
         CHECK(!tree.json("/raw").contains("RANGE"));
     }
+    // The three kinds: parameter (state), message (received, no state), signal (emitted, no state)
+    {
+        pxs::Tree kinds;
+        int received = 0;
+        kinds.addMessage("/show/go", "i", [&](const QVariantList &a) { received += a.value(0).toInt(); return true; }, "Go to a cue");
+        kinds.addMessage("/show/stop", "", [&](const QVariantList &) { ++received; return true; });
+        kinds.addSignal("/detect/peak", "f", "A peak was heard");
+        auto level = make("/level", Parameter::Type::Float);
+        double stored = 0;
+        level->range(0, 1).bind([&] { return QVariant(stored); }, [&](const QVariant &v) { stored = v.toDouble(); });
+        kinds.add("/level", std::move(level));
+        CHECK(kinds.find("/show/go")->kind() == pxs::Kind::Message && kinds.find("/detect/peak")->kind() == pxs::Kind::Signal);
+        CHECK(kinds.find("/level")->kind() == pxs::Kind::Parameter && kinds.find("/show")->kind() == pxs::Kind::Container);
+        CHECK(kinds.apply({"/show/go", "i", {3}}) == 1 && received == 3);
+        CHECK(kinds.apply({"/show/stop", "", {}}) == 1 && received == 4);
+        CHECK(kinds.apply({"/detect/peak", "f", {1.0}}) == 0); // nobody writes a signal
+        const QJsonObject go = kinds.json("/show/go");
+        CHECK(go["ACCESS"] == 2 && go["TYPE"] == "i" && go["PXS_KIND"] == "message" && !go.contains("VALUE"));
+        CHECK(kinds.json("/show/stop")["TYPE"] == "N");
+        const QJsonObject peak = kinds.json("/detect/peak");
+        CHECK(peak["ACCESS"] == 1 && peak["PXS_KIND"] == "signal" && !peak.contains("VALUE") && !peak.contains("CONTENTS"));
+        CHECK(!kinds.json("/level").contains("PXS_KIND"));
+        // Everything the application says goes to one output
+        std::vector<osc::Message> out;
+        kinds.setOutput([&](const osc::Message &m) { out.push_back(m); });
+        CHECK(kinds.fire("/detect/peak", {0.8}) && out.size() == 1 && out[0].address == "/detect/peak" && out[0].types == "f");
+        CHECK(!kinds.fire("/level") && !kinds.fire("/show/go") && !kinds.fire("/nothing"));
+        stored = 0.25;
+        CHECK(kinds.changed("/level") && out.size() == 2 && out[1].args.value(0).toDouble() == 0.25);
+        CHECK(!kinds.changed("/detect/peak"));
+    }
     CHECK(tree.remove("/layer/2") && !tree.find("/layer/2/opacity"));
     return failures ? 1 : 0;
 }

@@ -82,6 +82,7 @@ Node &Tree::add(const QString &path, std::unique_ptr<Parameter> parameter)
     Node &node = add(path);
     Parameter *p = parameter.get();
     node.m_parameter = std::move(parameter);
+    node.m_kind = p->info().type == ParamInfo::Type::Trigger ? Kind::Message : Kind::Parameter;
     const ParamInfo info = p->info();
     node.type = oscType(info);
     node.access = info.access;
@@ -103,6 +104,55 @@ Node &Tree::add(const QString &path, std::unique_ptr<Parameter> parameter)
         return p->setValue(v);
     };
     return node;
+}
+
+Node &Tree::addMessage(const QString &path, const QString &type, std::function<bool(const QVariantList &)> handler,
+                       const QString &description)
+{
+    Node &node = add(path);
+    node.m_kind = Kind::Message;
+    node.type = type.isEmpty() ? QStringLiteral("N") : type;
+    node.access = 2;
+    node.description = description;
+    node.get = nullptr;
+    node.set = std::move(handler);
+    return node;
+}
+
+Node &Tree::addSignal(const QString &path, const QString &type, const QString &description)
+{
+    Node &node = add(path);
+    node.m_kind = Kind::Signal;
+    node.type = type.isEmpty() ? QStringLiteral("N") : type;
+    node.access = 1;
+    node.description = description;
+    node.get = nullptr;
+    node.set = nullptr;
+    return node;
+}
+
+bool Tree::fire(const QString &path, const QVariantList &args) const
+{
+    const Node *node = find(path);
+    if (!node || node->m_kind != Kind::Signal || node->isContainer()) return false;
+    if (m_output) {
+        osc::Message m;
+        m.address = node->path();
+        if (node->type != QLatin1String("N")) {
+            m.types = node->type;
+            m.args = args;
+        }
+        m_output(m);
+    }
+    return true;
+}
+
+bool Tree::changed(const QString &path) const
+{
+    const Node *node = find(path);
+    if (!node || node->kind() != Kind::Parameter) return false;
+    if (m_output) m_output(message(*node));
+    return true;
 }
 
 Node *Tree::find(const QString &path) const
@@ -172,6 +222,8 @@ QJsonObject Tree::json(const QString &path) const
     o["FULL_PATH"] = n->path();
     o["ACCESS"] = n->access;
     if (!n->description.isEmpty()) o["DESCRIPTION"] = n->description;
+    if (n->m_kind == Kind::Message && !n->isContainer()) o["PXS_KIND"] = "message";
+    if (n->m_kind == Kind::Signal && !n->isContainer()) o["PXS_KIND"] = "signal";
     if (!n->type.isEmpty()) {
         o["TYPE"] = n->type;
         if ((n->access & 1) && n->get) {

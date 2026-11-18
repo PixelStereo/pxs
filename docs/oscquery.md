@@ -15,6 +15,25 @@ tree.attribute("/layer/1/opacity", "VALUE", out);  // one attribute (?VALUE); ou
 pxs::Tree::message(*tree.find("/layer/1/enable")); // the OSC message that says what a parameter holds (the feedback)
 ```
 
+## Three kinds of leaf, the same in every application
+
+| Kind | State | Made with | OSCQuery |
+|---|---|---|---|
+| **parameter** | yes: read, written, saved, tells when it changes | `add(path, Parameter)`, or filled by hand | ACCESS 1 to 3, `VALUE`, `RANGE` |
+| **message** (action) | none: received, does something | `addMessage(path, "i", handler)` | ACCESS 2, `TYPE`, `PXS_KIND: "message"`, no `VALUE` |
+| **signal** (controller output) | none: the application emits it, nobody writes it | `addSignal(path, "f")`, then `fire(path, {args})` | ACCESS 1, `TYPE`, `PXS_KIND: "signal"`, no `VALUE` |
+
+```cpp
+tree.addMessage("/show/go", "i", [&](const QVariantList &a) { goTo(a.value(0).toInt()); return true; }, "Go to a cue");
+tree.addSignal("/detect/peak", "f", "A peak was heard");
+tree.setOutput([&](const osc::Message &m) { sendToClients(m); });  // set once, by the service that sends
+tree.fire("/detect/peak", {0.8});     // a signal goes to the output
+tree.changed("/layer/1/opacity");     // a parameter's new value goes to the output (the feedback)
+```
+
+A message with no argument has the type `N`. Everything an application says (a signal, a parameter's feedback) goes
+through the same output, so a client that listens hears all three the same way. A `Trigger` parameter is a message.
+
 A node can also be filled in by hand, for an application that already has its own way to read and write a value:
 
 ```cpp
