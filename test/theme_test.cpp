@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QRadioButton>
 #include <QImage>
 #include <QPalette>
 #include <QProxyStyle>
@@ -35,6 +36,19 @@ int main(int argc, char **argv)
         box.setChecked(true);
         box.resize(box.sizeHint());
         const QImage image = box.grab().toImage();
+        bool accentSeen = false;
+        for (int y = 0; y < image.height() && !accentSeen; ++y)
+            for (int x = 0; x < image.width(); ++x)
+                if (image.pixelColor(x, y) == pxs::graphite().link) { accentSeen = true; break; }
+        CHECK(accentSeen);
+    }
+    // A selected radio button shows the accent too
+    {
+        pxs::apply(app, pxs::graphite());
+        QRadioButton radio("on");
+        radio.setChecked(true);
+        radio.resize(radio.sizeHint());
+        const QImage image = radio.grab().toImage();
         bool accentSeen = false;
         for (int y = 0; y < image.height() && !accentSeen; ++y)
             for (int x = 0; x < image.width(); ++x)

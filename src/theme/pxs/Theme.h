@@ -37,6 +37,10 @@ QString baseStyleSheet(const Palette &palette);
 // application is drawn this way (pxs::apply installs the style that calls it); custom widgets can call it directly.
 void paintCheck(QPainter &painter, const QRectF &box, bool on, bool partial, bool hover, bool enabled, const QPalette &palette);
 
+// A radio button: the same family as the check box, round: a dark disc with a light edge, and the accent as a dot inside
+// when it is selected.
+void paintRadio(QPainter &painter, const QRectF &box, bool on, bool hover, bool enabled, const QPalette &palette);
+
 // Sets the Fusion style (unless the application installed a proxy style of its own), the palette and the style sheet
 // (base, then the application's own, tokens resolved).
 void apply(QApplication &app, const Palette &palette, const QString &applicationStyleSheet = {});

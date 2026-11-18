@@ -83,8 +83,29 @@ void paintCheck(QPainter &painter, const QRectF &box, bool on, bool partial, boo
     painter.restore();
 }
 
+void paintRadio(QPainter &painter, const QRectF &box, bool on, bool hover, bool enabled, const QPalette &palette)
+{
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing);
+    QColor accent = palette.color(QPalette::Link);
+    QColor line = on ? accent : hover ? palette.color(QPalette::Link).darker(135) : palette.color(QPalette::Mid);
+    if (!enabled) {
+        accent.setAlphaF(0.45f);
+        line.setAlphaF(0.45f);
+    }
+    painter.setPen(QPen(line, 1.2));
+    painter.setBrush(palette.color(QPalette::Base).darker(115));
+    painter.drawEllipse(box.adjusted(0.6, 0.6, -0.6, -0.6));
+    if (on) {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(accent);
+        painter.drawEllipse(box.adjusted(3.6, 3.6, -3.6, -3.6));
+    }
+    painter.restore();
+}
+
 namespace {
-// Fusion, with the check boxes (and the checkable rows of lists and trees) drawn by paintCheck
+// Fusion, with the check boxes (and the checkable rows of lists and trees) drawn by paintCheck and the radio buttons by paintRadio
 class CheckStyle : public QProxyStyle {
 public:
     using QProxyStyle::QProxyStyle;
@@ -96,6 +117,14 @@ public:
             const QRectF box(r.center().x() - side / 2, r.center().y() - side / 2, side, side);
             paintCheck(*painter, box, option->state & State_On, option->state & State_NoChange, option->state & State_MouseOver,
                        option->state & State_Enabled, option->palette);
+            return;
+        }
+        if (element == PE_IndicatorRadioButton) {
+            const QRectF r(option->rect);
+            const double side = std::min(r.width(), r.height());
+            const QRectF box(r.center().x() - side / 2, r.center().y() - side / 2, side, side);
+            paintRadio(*painter, box, option->state & State_On, option->state & State_MouseOver, option->state & State_Enabled,
+                       option->palette);
             return;
         }
         QProxyStyle::drawPrimitive(element, option, painter, widget);
