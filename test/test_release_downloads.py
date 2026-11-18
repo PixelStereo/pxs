@@ -29,6 +29,12 @@ class ReleaseDownloads(unittest.TestCase):
         chosen, _ = rd.select([old, new], "App", "o/App", ["mac", "win"])
         self.assertEqual(chosen["tag_name"], "v1.1.0")
 
+    def test_newest_version_wins_over_newest_publication(self):
+        old = release("v1.1.0", [n.replace("1.2.0", "1.1.0") for n in NEW], "2026-03-01T00:00:00Z")
+        new = release("v1.2.0", NEW, "2026-02-01T00:00:00Z")
+        chosen, _ = rd.select([old, new], "App", "o/App", ["mac"])
+        self.assertEqual(chosen["tag_name"], "v1.2.0")
+
     def test_legacy_names(self):
         legacy = ["App-macOS-arm64-v0.2.2.zip", "App-Windows-x64-v0.2.2-Setup.exe"]
         _, urls = rd.select([release("v0.2.2", legacy)], "App", "o/App", ["mac", "win"])

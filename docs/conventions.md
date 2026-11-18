@@ -62,8 +62,8 @@ on:
 permissions: { contents: write }
 jobs:
   update:
-    uses: PixelStereo/pxs/.github/workflows/release-downloads.yml@v0.12.0
-    with: { app: MpOsc, platforms: "mac,win", pxs-ref: v0.12.0 }   # platforms: mac, win, linux, android, ios
+    uses: PixelStereo/pxs/.github/workflows/release-downloads.yml@v0.12.1
+    with: { app: MpOsc, platforms: "mac,win", pxs-ref: v0.12.1 }   # platforms: mac, win, linux, android, ios
 ```
 
 The script is `scripts/release_downloads.py`; the commit says which release it follows.

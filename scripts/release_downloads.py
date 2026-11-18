@@ -30,6 +30,12 @@ PLATFORMS = {
 ARCH_PREFERENCE = ["arm64", "universal", "x64", "x86_64", "amd64"]
 
 
+def version(tag):
+    numbers = re.match(r"v?(\d+)\.(\d+)(?:\.(\d+))?", tag)
+    stable = 0 if re.search(r"[-+]", tag) else 1  # 1.2.0 comes after 1.2.0-rc1
+    return (tuple(int(n or 0) for n in numbers.groups()) if numbers else (0, 0, 0)) + (stable,)
+
+
 def pick(app, tag, platform, assets):
     """The best uploaded file for a platform, or None."""
     _, _, _, _, oses, suffixes = PLATFORMS[platform]
@@ -52,8 +58,9 @@ def pick(app, tag, platform, assets):
 
 
 def select(releases, app, repo, platforms):
+    # Newest version first (not newest publication: a republished old release must not win).
     published = sorted((r for r in releases if not r.get("draft") and r.get("published_at")),
-                       key=lambda r: (r["published_at"], r.get("id", 0)), reverse=True)
+                       key=lambda r: (version(r["tag_name"]), r["published_at"]), reverse=True)
     for release in published:
         tag = release["tag_name"]
         if not TAG.fullmatch(tag):
