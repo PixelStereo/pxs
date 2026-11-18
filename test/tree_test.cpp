@@ -52,17 +52,53 @@ int main(int argc, char **argv)
     CHECK(m.address == "/layer/1/enable" && m.types == "T");
 
     // OSCQuery is derived from the declarations
-    const QJsonObject all = tree.query();
+    const QJsonObject all = tree.json();
     const QJsonObject opacityNode = all["CONTENTS"].toObject()["layer"].toObject()["CONTENTS"].toObject()["1"].toObject()["CONTENTS"].toObject()["opacity"].toObject();
     CHECK(opacityNode["TYPE"] == "f" && opacityNode["ACCESS"] == 3);
     CHECK(opacityNode["RANGE"].toArray()[0].toObject()["MAX"] == 1);
     CHECK(qAbs(opacityNode["VALUE"].toArray()[0].toDouble() - 0.5) < 1e-9); // what it holds now
     CHECK(opacityNode["DESCRIPTION"] == "How opaque the layer is");
-    const QJsonObject mode_ = tree.query("/layer/1/mode");
+    const QJsonObject mode_ = tree.json("/layer/1/mode");
     CHECK(mode_["RANGE"].toArray()[0].toObject()["VALS"].toArray().size() == 2);
-    CHECK(tree.query("/layer/1/fps")["ACCESS"] == 1);
+    CHECK(tree.json("/layer/1/fps")["ACCESS"] == 1);
     CHECK(pxs::Tree::hostInfo("App", 9000)["OSC_PORT"] == 9000);
 
+    // A node filled in by hand, for an application that already has its own way to read and write: two arguments, its
+    // own attribute, a container with a description
+    {
+        QVariantList position{0.25, 0.75};
+        pxs::Node &xy = tree.add("/layer/1/position");
+        xy.type = "ff";
+        xy.access = 3;
+        xy.description = "Position";
+        xy.range = QJsonArray{QJsonObject{{"MIN", 0}, {"MAX", 1}}, QJsonObject{{"MIN", 0}, {"MAX", 1}}};
+        xy.clip = "both";
+        xy.get = [&] { return position; };
+        xy.set = [&](const QVariantList &v) { if (v.size() != 2) return false; position = v; return true; };
+        xy.attributes["APP_DEFAULT"] = [] { return QJsonValue(QJsonArray{0.5, 0.5}); };
+        CHECK(tree.apply({"/layer/1/position", "ff", {0.1, 0.2}}) == 1 && qAbs(position[1].toDouble() - 0.2) < 1e-9);
+        CHECK(tree.apply({"/layer/1/position", "f", {0.1}}) == 0); // refused
+        const QJsonObject j = tree.json("/layer/1/position");
+        CHECK(j["TYPE"] == "ff" && j["VALUE"].toArray().size() == 2 && j["CLIPMODE"].toArray().size() == 2);
+        CHECK(j["APP_DEFAULT"].toArray().size() == 2);
+        QJsonObject only;
+        CHECK(tree.attribute("/layer/1/position", "value", only) && only.contains("VALUE") && only.size() == 1);
+        QJsonObject none;
+        CHECK(tree.attribute("/layer/1/fps", "clipmode", none) && none.isEmpty()); // known node, no value
+        CHECK(!tree.attribute("/nothing", "value", none));
+        tree.add("/layer/1").description = "Layer 1";
+        CHECK(tree.json("/layer/1")["DESCRIPTION"] == "Layer 1" && tree.json("/layer/1").contains("CONTENTS"));
+        // A method without argument is not a container
+        pxs::Node &go = tree.add("/go");
+        go.access = 2;
+        go.set = [](const QVariantList &) { return true; };
+        CHECK(!tree.json("/go").contains("CONTENTS") && tree.apply({"/go", "", {}}) == 1);
+        // A parameter without a range says none
+        auto raw = make("/raw", Parameter::Type::Float);
+        raw->unbounded().bind([] { return QVariant(1.0); }, [](const QVariant &) {});
+        tree.add("/raw", std::move(raw));
+        CHECK(!tree.json("/raw").contains("RANGE"));
+    }
     CHECK(tree.remove("/layer/2") && !tree.find("/layer/2/opacity"));
     return failures ? 1 : 0;
 }

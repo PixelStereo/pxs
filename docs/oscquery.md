@@ -10,8 +10,18 @@ opacity->range(0, 1).bind(get, set);
 tree.add("/layer/1/opacity", std::move(opacity)).description = "How opaque the layer is";
 
 tree.apply({"/layer/*/opacity", "f", {0.5}});   // every node the pattern names, as its access and limits allow
-tree.query();                                    // the OSCQuery JSON of the whole tree
+tree.json();                                     // the OSCQuery JSON of the whole tree
+tree.attribute("/layer/1/opacity", "VALUE", out);  // one attribute (?VALUE); out is empty when it has no value
 pxs::Tree::message(*tree.find("/layer/1/enable")); // the OSC message that says what a parameter holds (the feedback)
+```
+
+A node can also be filled in by hand, for an application that already has its own way to read and write a value:
+
+```cpp
+auto &xy = tree.add("/layer/1/position");
+xy.type = "ff"; xy.access = 3; xy.description = "Position";
+xy.range = {...}; xy.get = [&] { return QVariantList{x, y}; }; xy.set = [&](const QVariantList &v) { ...; return true; };
+xy.attributes["MYAPP_DEFAULT"] = [] { return QJsonValue(...); };   // an extension of OSCQuery, asked with ?MYAPP_DEFAULT
 ```
 
 ## What it takes from Ossia
@@ -34,9 +44,9 @@ Ossia has more than these applications use, and a part of it is complexity that 
 
 ## The OSCQuery description
 
-`query(path)` gives `FULL_PATH`, `CONTENTS` (the children), and for a parameter `TYPE` (`f`, `i`, `T`, `s`, `N` for an
+`json(path)` gives `FULL_PATH`, `CONTENTS` (the children), and for a parameter `TYPE` (`f`, `i`, `T`, `s`, `N` for an
 action), `ACCESS` (1 read, 2 write, 3 both), `RANGE` (`MIN` and `MAX`, or `VALS` for a choice), `VALUE` (when readable)
-and `DESCRIPTION`. `hostInfo(name, port)` gives the `/?HOST_INFO` answer. The HTTP server and the announcement (mDNS)
+and `DESCRIPTION`. `hostInfo(name, port, extensions)` gives the `/?HOST_INFO` answer (each application says which extensions it supports). The HTTP server and the announcement (mDNS)
 belong to the application; the tree gives them their content.
 
 ## Applying a message

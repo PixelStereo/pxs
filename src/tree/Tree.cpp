@@ -34,19 +34,6 @@ QVariant fromOsc(const ParamInfo &info, const QVariant &arg)
     }
     return {};
 }
-
-QJsonValue toJson(const ParamInfo &info, const QVariant &v)
-{
-    switch (info.type) {
-    case ParamInfo::Type::Float: return v.toDouble();
-    case ParamInfo::Type::Int: return v.toInt();
-    case ParamInfo::Type::Bool: return v.toBool();
-    case ParamInfo::Type::Choice:
-    case ParamInfo::Type::Text: return v.toString();
-    case ParamInfo::Type::Trigger: return QJsonValue();
-    }
-    return {};
-}
 } // namespace
 
 QString oscType(const ParamInfo &info)
@@ -75,9 +62,7 @@ Node *Node::child(const QString &name) const
     return it == m_children.end() ? nullptr : it->second.get();
 }
 
-Tree::Tree() {}
-
-Node &Tree::add(const QString &path, std::unique_ptr<Parameter> parameter)
+Node &Tree::add(const QString &path)
 {
     Node *node = &m_root;
     for (const QString &name : segments(path)) {
@@ -89,8 +74,35 @@ Node &Tree::add(const QString &path, std::unique_ptr<Parameter> parameter)
         }
         node = slot.get();
     }
-    if (parameter) node->m_parameter = std::move(parameter);
     return *node;
+}
+
+Node &Tree::add(const QString &path, std::unique_ptr<Parameter> parameter)
+{
+    Node &node = add(path);
+    Parameter *p = parameter.get();
+    node.m_parameter = std::move(parameter);
+    const ParamInfo info = p->info();
+    node.type = oscType(info);
+    node.access = info.access;
+    if (info.isNumber() && !info.unbounded) node.range = QJsonArray{QJsonObject{{"MIN", info.min}, {"MAX", info.max}}};
+    if (info.type == ParamInfo::Type::Choice) {
+        QJsonArray vals;
+        for (const QString &key : info.choices) vals.append(key);
+        node.range = QJsonArray{QJsonObject{{"VALS", vals}}};
+    }
+    if (info.type == ParamInfo::Type::Trigger) {
+        node.get = nullptr;
+    } else {
+        node.get = [p] { return QVariantList{p->value()}; };
+    }
+    node.set = [p](const QVariantList &args) {
+        const ParamInfo now = p->info();
+        const QVariant v = fromOsc(now, args.value(0));
+        if (!v.isValid() && now.type != ParamInfo::Type::Trigger) return false;
+        return p->setValue(v);
+    };
+    return node;
 }
 
 Node *Tree::find(const QString &path) const
@@ -110,6 +122,8 @@ bool Tree::remove(const QString &path)
     return node->m_parent->m_children.erase(node->m_name) > 0;
 }
 
+void Tree::clear() { m_root.m_children.clear(); m_root.description.clear(); }
+
 std::vector<Node *> Tree::match(const QString &pattern) const
 {
     std::vector<Node *> out;
@@ -119,67 +133,94 @@ std::vector<Node *> Tree::match(const QString &pattern) const
 
 int Tree::apply(const osc::Message &message) const
 {
-    int written = 0;
-    for (Node *node : match(message.address)) {
-        Parameter *p = node->parameter();
-        if (!p) continue;
-        const ParamInfo info = p->info();
-        if (!(info.access & ParamInfo::Write)) continue;
-        const QVariant v = fromOsc(info, message.args.value(0));
-        if (!v.isValid() && info.type != ParamInfo::Type::Trigger) continue;
-        if (p->setValue(v)) ++written;
-    }
-    return written;
+    int accepted = 0;
+    for (Node *node : match(message.address))
+        if ((node->access & 2) && node->set && node->set(message.args)) ++accepted;
+    return accepted;
 }
 
 osc::Message Tree::message(const Node &node)
 {
     osc::Message m;
     m.address = node.path();
-    if (const Parameter *p = node.parameter()) {
-        const ParamInfo info = p->info();
-        const QString type = oscType(info);
-        if (info.type == ParamInfo::Type::Bool) {
-            m.types = p->value().toBool() ? QStringLiteral("T") : QStringLiteral("F");
-        } else if (info.type != ParamInfo::Type::Trigger) {
-            m.types = type;
-            m.args << p->value();
-        }
+    if (node.type == QLatin1String("T") || node.type == QLatin1String("F")) {
+        const QVariantList v = node.get ? node.get() : QVariantList();
+        m.types = !v.isEmpty() && v[0].toBool() ? QStringLiteral("T") : QStringLiteral("F");
+    } else if (node.get && node.type != QLatin1String("N")) {
+        m.types = node.type;
+        m.args = node.get();
     }
     return m;
 }
 
-QJsonObject Tree::query(const QString &path) const
+QJsonValue Tree::jsonValue(const QString &type, const QVariant &v, int k)
 {
-    const Node *node = find(path);
-    if (!node) return {};
+    const QChar t = k < type.size() ? type[k] : QChar();
+    if (t == 'T' || t == 'F') return v.toBool();
+    if (t == 'i' || t == 'h') return v.toLongLong();
+    if (t == 's') return v.toString();
+    if (t == 'N' || t == 'I') return QJsonValue();
+    const double d = v.toDouble();
+    return std::isfinite(d) ? d : 0.0;
+}
+
+QJsonObject Tree::json(const QString &path) const
+{
+    const Node *n = find(path);
+    if (!n) return {};
     QJsonObject o;
-    o["FULL_PATH"] = node->path();
-    if (!node->description.isEmpty()) o["DESCRIPTION"] = node->description;
-    if (const Parameter *p = node->parameter()) {
-        const ParamInfo info = p->info();
-        o["TYPE"] = oscType(info);
-        o["ACCESS"] = info.access;                      // 1 read, 2 write, 3 both, as OSCQuery says
-        if (info.isNumber()) o["RANGE"] = QJsonArray{QJsonObject{{"MIN", info.min}, {"MAX", info.max}}};
-        if (info.type == ParamInfo::Type::Choice) {
-            QJsonArray vals;
-            for (const QString &key : info.choices) vals.append(key);
-            o["RANGE"] = QJsonArray{QJsonObject{{"VALS", vals}}};
+    o["FULL_PATH"] = n->path();
+    o["ACCESS"] = n->access;
+    if (!n->description.isEmpty()) o["DESCRIPTION"] = n->description;
+    if (!n->type.isEmpty()) {
+        o["TYPE"] = n->type;
+        if ((n->access & 1) && n->get) {
+            const QVariantList v = n->get();
+            if (!v.isEmpty()) {
+                QJsonArray a;
+                for (int k = 0; k < v.size(); ++k) a.append(jsonValue(n->type, v[k], k));
+                o["VALUE"] = a;
+            }
         }
-        if (info.access & ParamInfo::Read) o["VALUE"] = QJsonArray{toJson(info, p->value())};
+        if (!n->range.isEmpty()) o["RANGE"] = n->range;
+        if (!n->clip.isEmpty()) {
+            QJsonArray c;
+            for (int k = 0; k < n->type.size(); ++k) c.append(n->clip);
+            o["CLIPMODE"] = c;
+        }
     }
-    if (!node->children().empty()) {
+    for (const auto &entry : n->attributes) {
+        const QJsonValue v = entry.second();
+        if (!v.isNull() && !v.isUndefined()) o[entry.first] = v;
+    }
+    if (n->isContainer()) { // a container always has CONTENTS (even empty)
         QJsonObject contents;
-        for (const auto &entry : node->children()) contents[entry.first] = query(entry.second->path());
+        for (const auto &entry : n->children()) contents[entry.first] = json(entry.second->path());
         o["CONTENTS"] = contents;
     }
     return o;
 }
 
-QJsonObject Tree::hostInfo(const QString &name, int oscPort, const QString &transport)
+bool Tree::attribute(const QString &path, const QString &name, QJsonObject &out) const
 {
-    return QJsonObject{{"NAME", name}, {"OSC_PORT", oscPort}, {"OSC_TRANSPORT", transport},
-                       {"EXTENSIONS", QJsonObject{{"ACCESS", true}, {"VALUE", true}, {"RANGE", true}, {"DESCRIPTION", true}}}};
+    const QJsonObject node = json(path);
+    if (node.isEmpty()) return false;
+    out = QJsonObject();
+    const QString key = name.toUpper();
+    if (node.contains(key)) out[key] = node.value(key);
+    return true;
+}
+
+QJsonObject Tree::defaultExtensions()
+{
+    return QJsonObject{{"ACCESS", true}, {"VALUE", true}, {"RANGE", true}, {"DESCRIPTION", true}};
+}
+
+QJsonObject Tree::hostInfo(const QString &name, int oscPort, const QJsonObject &extensions, const QJsonObject &more)
+{
+    QJsonObject o{{"NAME", name}, {"OSC_PORT", oscPort}, {"OSC_TRANSPORT", "UDP"}, {"EXTENSIONS", extensions}};
+    for (auto it = more.begin(); it != more.end(); ++it) o[it.key()] = it.value();
+    return o;
 }
 
 } // namespace pxs

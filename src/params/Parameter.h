@@ -55,6 +55,7 @@ struct ParamInfo {
     // An action rather than a value: a Trigger (Rewind, Start, a timeline's Play, GO), or a value it can only be sent
     // (Seek To). A preset holds it as something to do when it is recalled, after its values
     bool action = false;
+    bool unbounded = false;   // no range to tell (OSCQuery omits RANGE): the value is not limited to what is shown
 
     bool isNumber() const { return type == Type::Float || type == Type::Int; }
     QString name() const; // its own name, without the category ("Rotation (°)")
@@ -74,6 +75,7 @@ public:
     Parameter &ramp(Ramp r);
     Parameter &readOnly();
     Parameter &writeOnly();
+    Parameter &unbounded() { m_info.unbounded = true; return *this; } // no declared range, whatever the defaults
     Parameter &transient(); // read and written, never saved (a state of the show, not of a cue: on / off, solo)
     Parameter &animatable(bool on = true);
     Parameter &colorComponent(int component) { m_info.colorComponent = component; return *this; }
