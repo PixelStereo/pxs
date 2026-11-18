@@ -150,6 +150,14 @@ int main(int argc, char **argv)
         heard = 0;
         CHECK(t.apply({"/x", "f", {0.6}}) == 1 && heard == 1);
         t.removeObserver(id);
+        // Locks are saved by address, and wait for a node that does not exist yet
+        t.setLocked("/x", true);
+        const QJsonArray saved = t.lockedToJson();
+        CHECK(saved.size() == 1 && saved[0] == "/x");
+        pxs::Tree fresh;
+        fresh.lockedFromJson(QJsonArray{"/y/z"});
+        CHECK(fresh.add("/y/z").locked);
+        t.setLocked("/x", false);
         CHECK(t.apply({"/x", "f", {0.7}}) == 1 && heard == 1);
         CHECK(!t.find("/x")->displayLabel().isEmpty());
     }

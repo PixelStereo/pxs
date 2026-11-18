@@ -71,6 +71,10 @@ Node &Tree::add(const QString &path)
             slot.reset(new Node);
             slot->m_name = name;
             slot->m_parent = node;
+            if (!m_pendingLocks.isEmpty() && m_pendingLocks.contains(slot->path())) {
+                slot->locked = true;
+                m_pendingLocks.removeAll(slot->path());
+            }
         }
         node = slot.get();
     }
@@ -236,6 +240,31 @@ bool Tree::setLocked(const QString &path, bool locked)
     node->locked = locked;
     notify(*node);
     return true;
+}
+
+namespace {
+void collectLocked(const Node &node, QJsonArray &out)
+{
+    if (node.locked) out.append(node.path());
+    for (const auto &entry : node.children()) collectLocked(*entry.second, out);
+}
+}
+
+QJsonArray Tree::lockedToJson() const
+{
+    QJsonArray out;
+    collectLocked(m_root, out);
+    return out;
+}
+
+void Tree::lockedFromJson(const QJsonArray &paths)
+{
+    m_pendingLocks.clear();
+    for (const QJsonValue &v : paths) {
+        const QString path = v.toString();
+        if (Node *node = find(path)) node->locked = true;
+        else m_pendingLocks.append(path);
+    }
 }
 
 bool Tree::reset(const QString &path) const

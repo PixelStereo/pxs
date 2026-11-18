@@ -23,6 +23,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 #include <functional>
 #include <map>
@@ -112,6 +113,10 @@ public:
     int addObserver(Observer observer);
     void removeObserver(int id);
     bool setLocked(const QString &path, bool locked); // false: no such node
+    // The locks are saved with what the application saves: the addresses of the locked nodes. A lock read before its node
+    // exists (the node is made later) is kept and applied when it is added.
+    QJsonArray lockedToJson() const;
+    void lockedFromJson(const QJsonArray &paths);
     bool reset(const QString &path) const;            // false: no such node, locked, or nothing to reset
     // Fires a signal (nothing is sent when the path is not a signal), with the arguments its type tags name
     bool fire(const QString &path, const QVariantList &args = {}) const;
@@ -136,6 +141,7 @@ public:
 private:
     void notify(const Node &node, const QVariantList &args = {}) const;
     Node m_root;
+    QStringList m_pendingLocks;
     std::function<void(const osc::Message &)> m_output;
     // Copy on write: a fired signal (thousands a second) takes one reference, not a copy of the list
     std::shared_ptr<const std::vector<std::pair<int, Observer>>> m_observers;
