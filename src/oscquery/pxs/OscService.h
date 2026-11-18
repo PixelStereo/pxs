@@ -2,8 +2,9 @@
 
 // What an application needs to be reachable like every other Pixel Stereo application: an OSC port (UDP) that applies
 // what it receives to the tree, the OSCQuery HTTP side, and the announcement on the local network (mDNS). What the
-// application says (a signal fired, a parameter that changed, see Tree::setOutput) goes back over UDP to the addresses
-// that wrote to it and to those added with addTarget().
+// application says goes back over UDP, see Tree::setOutput:
+//   a parameter that changed (the feedback) -> the senders that wrote to it, and the targets
+//   a signal fired                          -> the targets only (a stream: nobody gets it by merely writing a parameter)
 
 #include <pxs/MdnsResponder.h>
 #include <pxs/QueryServer.h>
@@ -26,10 +27,12 @@ public:
     quint16 oscPort() const { return m_udp.localPort(); }
     quint16 httpPort() const { return m_http.port(); }
 
-    // Who gets the feedback and the signals besides the senders (learned from what they send; switch off for none)
+    // Where the signals go (and the feedback too): the application's own destinations
     void addTarget(const QHostAddress &address, quint16 port);
+    void setTargets(const QList<QPair<QHostAddress, quint16>> &targets) { m_targets = targets; }
     void clearTargets();
-    void setLearnSenders(bool on) { m_learn = on; }
+    // The feedback also goes to whoever wrote to the application, on the port it wrote from (on by default)
+    void setLearnSenders(bool on) { m_learn = on; if (!on) m_learned.clear(); }
 
     QueryServer &query() { return m_http; }
 
@@ -46,7 +49,7 @@ private:
     QUdpSocket m_udp;
     QueryServer m_http;
     MdnsResponder m_mdns;
-    QList<QPair<QHostAddress, quint16>> m_targets;
+    QList<QPair<QHostAddress, quint16>> m_targets, m_learned;
     bool m_learn = true;
 };
 

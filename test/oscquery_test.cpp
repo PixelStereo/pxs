@@ -62,9 +62,14 @@ int main(int argc, char **argv)
     pump(app, [&] { return level == 0.25; });
     CHECK(level == 0.25);
     tree.changed("/level");
+    tree.fire("/detect/peak", {0.9}); // a signal does not go to someone who only wrote a parameter
+    pump(app, [&] { return heard.size() >= 1; });
+    pump(app, [&] { return false; }, 150);
+    CHECK(heard.size() == 1 && heard[0].address == "/level");
+    service.addTarget(QHostAddress::LocalHost, client.localPort()); // a destination of the application gets the signals
     tree.fire("/detect/peak", {0.9});
     pump(app, [&] { return heard.size() >= 2; });
-    CHECK(heard.size() >= 2 && heard[0].address == "/level" && heard[1].address == "/detect/peak");
+    CHECK(heard.size() == 2 && heard[1].address == "/detect/peak");
 
     service.stop();
     CHECK(!service.isRunning());

@@ -77,8 +77,9 @@ belong to the application; the tree gives them their content.
 ## Making an application reachable: `pxs::oscquery` and `pxs::bind`
 
 Every application is reachable the same way. `OscService` opens the UDP port (what arrives is applied to the tree), the
-OSCQuery HTTP side and the mDNS announcement; what the application says (`fire`, `changed`) goes back to whoever wrote
-to it and to the targets added with `addTarget()`.
+OSCQuery HTTP side and the mDNS announcement. What the application says goes back over UDP: a parameter's feedback
+(`changed`) to the senders that wrote to it and to the targets, a signal (`fire`) to the targets only (`addTarget()`:
+the application's own destinations), so that writing a parameter never subscribes anyone to a stream.
 
 ```cpp
 pxs::Tree tree;

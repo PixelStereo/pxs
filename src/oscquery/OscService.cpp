@@ -63,10 +63,7 @@ void OscService::onReadyRead()
         m_udp.readDatagram(packet.data(), packet.size(), &from, &port);
         std::vector<osc::Message> messages;
         if (!osc::decode(packet, messages)) continue;
-        if (m_learn) {
-            // Whoever writes to the application hears it back: on the port it sent from
-            addTarget(from, port);
-        }
+        if (m_learn && !m_learned.contains({from, port})) m_learned.append({from, port}); // hears the feedback
         for (const osc::Message &m : messages) emit messageReceived(m, m_tree->apply(m));
     }
 }
@@ -76,6 +73,10 @@ void OscService::send(const osc::Message &message)
     if (m_udp.state() != QAbstractSocket::BoundState) return;
     const QByteArray packet = osc::encode(message);
     for (const auto &t : m_targets) m_udp.writeDatagram(packet, t.first, t.second);
+    const Node *node = m_tree->find(message.address);
+    if (node && node->kind() == Kind::Signal) return; // a stream goes to the targets only
+    for (const auto &t : m_learned)
+        if (!m_targets.contains(t)) m_udp.writeDatagram(packet, t.first, t.second);
 }
 
 } // namespace pxs
