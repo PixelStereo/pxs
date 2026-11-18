@@ -10,7 +10,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            qt: 6.8.3
+          - os: windows-latest
+            qt: 6.8.3
+          # Qt 6.8 links the AGL framework, gone from the macOS 26 SDK of the runner
+          - os: macos-latest
+            qt: 6.10.3
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -18,7 +25,7 @@ jobs:
           fetch-depth: 0
       - uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.3'
+          version: ${{ matrix.qt }}
           cache: true
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build --config Release --parallel 3
