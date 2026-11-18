@@ -19,7 +19,18 @@ The suffix is computed when CMake configures. A source archive without Git metad
 
 ## Downloads
 
-Release files carry the tag: `App-<platform>-<tag>.<ext>`.
+Release files are named `<App>-<os>-<arch>-<tag><suffix>`, the same in every application:
+
+| | |
+|---|---|
+| os | `macos`, `windows`, `linux` (and `android`, `ios`) |
+| arch | `arm64`, `x64` (Intel or AMD 64-bit), `universal` for a macOS app holding both |
+| tag | the release tag, `v1.2.3` |
+| suffix | `.zip` (macOS), `-Setup.exe` (Windows), `.AppImage` / `.tar.gz` / `.deb` (Linux), `.apk`, `-unsigned.ipa` / `.ipa` |
+
+`MpOsc-macos-arm64-v0.3.1.zip`, `MpOsc-windows-x64-v0.3.1-Setup.exe`, `NyxMap-linux-x64-v0.6.8.AppImage`. A build that is
+not a release says `dev` in place of the tag. The README download links are rewritten from these names (the script
+accepts the older names of releases published before the rule, until a newer release exists).
 
 - **macOS: a zip with the application inside.** Never a DMG. Qt deployed into the bundle, every Mach-O file and bundle
   signed ad hoc (without a valid signature an Apple Silicon Mac calls the download "damaged"), then
