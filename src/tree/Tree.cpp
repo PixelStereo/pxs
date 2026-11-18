@@ -71,6 +71,10 @@ Node &Tree::add(const QString &path)
             slot.reset(new Node);
             slot->m_name = name;
             slot->m_parent = node;
+            if (!m_pendingLocks.isEmpty() && m_pendingLocks.contains(slot->path())) {
+                slot->locked = true;
+                m_pendingLocks.removeAll(slot->path());
+            }
         }
         node = slot.get();
     }
@@ -84,6 +88,8 @@ Node &Tree::add(const QString &path, std::unique_ptr<Parameter> parameter)
     node.m_parameter = std::move(parameter);
     node.m_kind = p->info().type == ParamInfo::Type::Trigger ? Kind::Message : Kind::Parameter;
     const ParamInfo info = p->info();
+    node.label = info.name();
+    if (info.type != ParamInfo::Type::Trigger && info.defaultValue.isValid()) node.reset = [p] { return p->reset(); };
     node.type = oscType(info);
     node.access = info.access;
     if (info.isNumber() && !info.unbounded) node.range = QJsonArray{QJsonObject{{"MIN", info.min}, {"MAX", info.max}}};
@@ -111,6 +117,7 @@ Node &Tree::addMessage(const QString &path, const QString &type, std::function<b
 {
     Node &node = add(path);
     node.m_kind = Kind::Message;
+    if (node.label.isEmpty()) node.label = node.name();
     node.type = type.isEmpty() ? QStringLiteral("N") : type;
     node.access = 2;
     node.description = description;
@@ -123,6 +130,7 @@ Node &Tree::addSignal(const QString &path, const QString &type, const QString &d
 {
     Node &node = add(path);
     node.m_kind = Kind::Signal;
+    if (node.label.isEmpty()) node.label = node.name();
     node.type = type.isEmpty() ? QStringLiteral("N") : type;
     node.access = 1;
     node.description = description;
@@ -144,6 +152,7 @@ bool Tree::fire(const QString &path, const QVariantList &args) const
         }
         m_output(m);
     }
+    notify(*node, args);
     return true;
 }
 
@@ -152,6 +161,7 @@ bool Tree::changed(const QString &path) const
     const Node *node = find(path);
     if (!node || node->kind() != Kind::Parameter) return false;
     if (m_output) m_output(message(*node));
+    notify(*node);
     return true;
 }
 
@@ -185,8 +195,84 @@ int Tree::apply(const osc::Message &message) const
 {
     int accepted = 0;
     for (Node *node : match(message.address))
-        if ((node->access & 2) && node->set && node->set(message.args)) ++accepted;
+        if ((node->access & 2) && !node->locked && node->set) {
+            m_applying = node;
+            m_applyNotified = false;
+            const bool ok = node->set(message.args);
+            m_applying = nullptr;
+            if (!ok) continue;
+            ++accepted;
+            if (!m_applyNotified) notify(*node);
+        }
     return accepted;
+}
+
+int Tree::addObserver(Observer observer)
+{
+    auto next = std::make_shared<std::vector<std::pair<int, Observer>>>(m_observers ? *m_observers : std::vector<std::pair<int, Observer>>());
+    next->emplace_back(m_nextObserver, std::move(observer));
+    m_observers = next;
+    return m_nextObserver++;
+}
+
+void Tree::removeObserver(int id)
+{
+    if (!m_observers) return;
+    auto next = std::make_shared<std::vector<std::pair<int, Observer>>>();
+    for (const auto &entry : *m_observers)
+        if (entry.first != id) next->push_back(entry);
+    m_observers = next;
+}
+
+void Tree::notify(const Node &node, const QVariantList &args) const
+{
+    if (&node == m_applying) m_applyNotified = true;
+    if (!m_observers || m_observers->empty()) return;
+    const auto observers = m_observers; // an observer may add or remove observers: it sees the list as it was
+    const QVariantList value = args.isEmpty() && node.get && node.kind() == Kind::Parameter ? node.get() : args;
+    for (const auto &entry : *observers) entry.second(node, value);
+}
+
+bool Tree::setLocked(const QString &path, bool locked)
+{
+    Node *node = find(path);
+    if (!node) return false;
+    node->locked = locked;
+    notify(*node);
+    return true;
+}
+
+namespace {
+void collectLocked(const Node &node, QJsonArray &out)
+{
+    if (node.locked) out.append(node.path());
+    for (const auto &entry : node.children()) collectLocked(*entry.second, out);
+}
+}
+
+QJsonArray Tree::lockedToJson() const
+{
+    QJsonArray out;
+    collectLocked(m_root, out);
+    return out;
+}
+
+void Tree::lockedFromJson(const QJsonArray &paths)
+{
+    m_pendingLocks.clear();
+    for (const QJsonValue &v : paths) {
+        const QString path = v.toString();
+        if (Node *node = find(path)) node->locked = true;
+        else m_pendingLocks.append(path);
+    }
+}
+
+bool Tree::reset(const QString &path) const
+{
+    Node *node = find(path);
+    if (!node || node->locked || !node->reset || !node->reset()) return false;
+    notify(*node);
+    return true;
 }
 
 osc::Message Tree::message(const Node &node)
@@ -222,6 +308,7 @@ QJsonObject Tree::json(const QString &path) const
     o["FULL_PATH"] = n->path();
     o["ACCESS"] = n->access;
     if (!n->description.isEmpty()) o["DESCRIPTION"] = n->description;
+    if (n->locked) o["PXS_LOCKED"] = true;
     if (n->m_kind == Kind::Message && !n->isContainer()) o["PXS_KIND"] = "message";
     if (n->m_kind == Kind::Signal && !n->isContainer()) o["PXS_KIND"] = "signal";
     if (!n->type.isEmpty()) {

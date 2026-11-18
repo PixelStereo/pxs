@@ -130,6 +130,37 @@ int main(int argc, char **argv)
         CHECK(kinds.changed("/level") && out.size() == 2 && out[1].args.value(0).toDouble() == 0.25);
         CHECK(!kinds.changed("/detect/peak"));
     }
+    // Lock, reset, observers, one notification per write
+    {
+        pxs::Tree t;
+        double v = 0.5;
+        auto p = make("/x", Parameter::Type::Float);
+        p->range(0, 1).byDefault(0.25).bind([&] { return QVariant(v); }, [&](const QVariant &n) { v = n.toDouble(); });
+        t.add("/x", std::move(p));
+        int heard = 0;
+        double last = -1;
+        const int id = t.addObserver([&](const pxs::Node &n, const QVariantList &a) { if (n.path() == "/x") { ++heard; last = a.value(0).toDouble(); } });
+        CHECK(t.apply({"/x", "f", {0.75}}) == 1 && heard == 1 && last == 0.75);
+        CHECK(t.reset("/x") && v == 0.25 && heard == 2);
+        CHECK(t.setLocked("/x", true) && t.json("/x")["PXS_LOCKED"] == true && heard == 3);
+        CHECK(t.apply({"/x", "f", {0.9}}) == 0 && v == 0.25 && !t.reset("/x"));
+        CHECK(t.setLocked("/x", false) && !t.json("/x").contains("PXS_LOCKED"));
+        // a write that tells changed() itself (a bound widget) notifies once
+        t.find("/x")->set = [&](const QVariantList &a) { v = a.value(0).toDouble(); t.changed("/x"); return true; };
+        heard = 0;
+        CHECK(t.apply({"/x", "f", {0.6}}) == 1 && heard == 1);
+        t.removeObserver(id);
+        // Locks are saved by address, and wait for a node that does not exist yet
+        t.setLocked("/x", true);
+        const QJsonArray saved = t.lockedToJson();
+        CHECK(saved.size() == 1 && saved[0] == "/x");
+        pxs::Tree fresh;
+        fresh.lockedFromJson(QJsonArray{"/y/z"});
+        CHECK(fresh.add("/y/z").locked);
+        t.setLocked("/x", false);
+        CHECK(t.apply({"/x", "f", {0.7}}) == 1 && heard == 1);
+        CHECK(!t.find("/x")->displayLabel().isEmpty());
+    }
     CHECK(tree.remove("/layer/2") && !tree.find("/layer/2/opacity"));
     return failures ? 1 : 0;
 }

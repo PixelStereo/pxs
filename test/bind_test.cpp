@@ -61,6 +61,13 @@ int main(int argc, char **argv)
     combo.setCurrentIndex(0);
     CHECK(out.size() == 1 && out[0].address == "/analysis/size" && out[0].args.value(0).toString() == "small");
 
+    // A locked node: the widget is disabled and OSC does not write it; unlocked, it is given back as it was
+    CHECK(tree.setLocked("/osc/send", true) && !check.isEnabled() && tree.apply({"/osc/send", "T", {true}}) == 0);
+    CHECK(tree.setLocked("/osc/send", false) && check.isEnabled());
+    // Reset puts back what the widget held when it was exposed
+    check.setChecked(true);
+    CHECK(tree.reset("/osc/send") && !check.isChecked());
+
     // What OSCQuery says
     const QJsonObject c = tree.json("/detection/confidence");
     CHECK(c["TYPE"] == "f" && c["RANGE"].toArray().at(0).toObject()["MAX"] == 1.0 && c["VALUE"].toArray().at(0).toDouble() == 0.4);

@@ -52,6 +52,15 @@ set_target_properties(pxs_widgets PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_COD
 target_include_directories(pxs_widgets PUBLIC src/widgets)
 target_link_libraries(pxs_widgets PUBLIC Qt6::Widgets)
 
+# Interactions: a value driven from outside (a key, a MIDI controller, an OSC message, a signal) through a chain of
+# filters (remap, average, attack-release, curve, threshold, toggle, envelope…), with pick-up and an Action mode; the
+# graph of them. From NyxMap, where it is the Interaction panel's model. Qt Core only.
+add_library(pxs_interaction STATIC src/interaction/Interactions.cpp src/interaction/Anim.cpp src/interaction/Interactions.h
+    src/interaction/InteractionGraph.h src/interaction/Anim.h src/interaction/OnsetAnalysis.h src/interaction/Published.h)
+add_library(pxs::interaction ALIAS pxs_interaction)
+target_include_directories(pxs_interaction PUBLIC src/interaction)
+target_link_libraries(pxs_interaction PUBLIC Qt6::Core)
+
 # Expose an interface's own widgets (check box, number field, menu, text field, button) as parameters and messages
 add_library(pxs_bind STATIC src/bind/Bind.cpp src/bind/pxs/Bind.h)
 add_library(pxs::bind ALIAS pxs_bind)
@@ -76,6 +85,12 @@ if(PXS_BUILD_TESTS)
     add_executable(pxs_bind_test test/bind_test.cpp)
     target_link_libraries(pxs_bind_test PRIVATE pxs::bind)
     add_test(NAME bind COMMAND pxs_bind_test)
+    add_executable(pxs_interaction_graph_test test/interaction_graph_test.cpp)
+    target_link_libraries(pxs_interaction_graph_test PRIVATE pxs::interaction)
+    add_test(NAME interaction_graph COMMAND pxs_interaction_graph_test)
+    add_executable(pxs_interaction_test test/interaction_test.cpp)
+    target_link_libraries(pxs_interaction_test PRIVATE pxs::interaction)
+    add_test(NAME interaction COMMAND pxs_interaction_test)
     add_executable(pxs_theme_test test/theme_test.cpp)
     target_link_libraries(pxs_theme_test PRIVATE pxs::theme)
     add_test(NAME theme COMMAND pxs_theme_test)

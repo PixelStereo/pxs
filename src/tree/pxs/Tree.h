@@ -23,6 +23,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 #include <functional>
 #include <map>
@@ -48,6 +49,9 @@ public:
     QString type;        // OSC type tags, one per argument ("f", "ff", "T"); empty for a container or an action without argument
     int access = 0;      // 0 none (a container), 1 read, 2 write, 3 both
     QString description;
+    QString label;       // what an interface shows for it ("Opacity"); empty: its name
+    bool locked = false; // refuses every write (OSC, a mapping, the panel) until unlocked; the application's own code is not stopped
+    std::function<bool()> reset; // puts the default back (a parameter with a default; empty: nothing to reset)
     QJsonArray range;    // one entry per argument: {"MIN", "MAX"} or {"VALS"}
     QString clip;        // "both" when the range is enforced (CLIPMODE)
     std::function<QVariantList()> get;                 // the value, one entry per argument
@@ -55,6 +59,8 @@ public:
     // The application's own attributes (an extension of OSCQuery), asked with ?NAME; empty result: no value
     std::map<QString, std::function<QJsonValue()>> attributes;
 
+    QString displayLabel() const { return label.isEmpty() ? m_name : label; }
+    bool animatable() const { return m_parameter && m_parameter->info().animatable; } // a timeline can drive it
     Kind kind() const { return isContainer() ? Kind::Container : m_kind; }
     bool isContainer() const { return !m_children.empty() || (type.isEmpty() && access == 0); }
 
@@ -99,6 +105,19 @@ public:
     // Where everything the application says goes (the OSC output, the listeners): a signal emitted, a parameter that
     // changed. Set by whoever sends (the OSC/OSCQuery service); one at a time.
     void setOutput(std::function<void(const osc::Message &)> output) { m_output = std::move(output); }
+    // Who else wants to know, inside the application (a panel that shows the values, the mappings): called when a parameter
+    // was written (OSC, a mapping, the panel) or told changed, a signal was fired, a node was locked. Returns an id for
+    // removeObserver(). Called on the thread that wrote.
+    using Observer = std::function<void(const Node &, const QVariantList &)>; // the value fired, or the one now held
+    // A write that goes through apply() and says changed() itself (a bound widget) notifies once.
+    int addObserver(Observer observer);
+    void removeObserver(int id);
+    bool setLocked(const QString &path, bool locked); // false: no such node
+    // The locks are saved with what the application saves: the addresses of the locked nodes. A lock read before its node
+    // exists (the node is made later) is kept and applied when it is added.
+    QJsonArray lockedToJson() const;
+    void lockedFromJson(const QJsonArray &paths);
+    bool reset(const QString &path) const;            // false: no such node, locked, or nothing to reset
     // Fires a signal (nothing is sent when the path is not a signal), with the arguments its type tags name
     bool fire(const QString &path, const QVariantList &args = {}) const;
     // Says that a parameter now holds another value (the feedback: its current message goes to the output)
@@ -120,8 +139,15 @@ public:
     static QJsonValue jsonValue(const QString &type, const QVariant &value, int argument);
 
 private:
+    void notify(const Node &node, const QVariantList &args = {}) const;
     Node m_root;
+    QStringList m_pendingLocks;
     std::function<void(const osc::Message &)> m_output;
+    // Copy on write: a fired signal (thousands a second) takes one reference, not a copy of the list
+    std::shared_ptr<const std::vector<std::pair<int, Observer>>> m_observers;
+    int m_nextObserver = 1;
+    mutable const Node *m_applying = nullptr; // the node apply() is writing (a thread at a time: the GUI thread)
+    mutable bool m_applyNotified = false;
 };
 
 // The OSC type tag of a parameter ("f", "i", "T" for a switch, "s", "N" for an action)
