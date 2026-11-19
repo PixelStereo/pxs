@@ -70,7 +70,7 @@ Tes quatre idées sont en fait des choses que NyxMap a déjà. Le travail est un
 | 1 | le modèle et le moteur de filtres des interactions (`Interactions.h`, `Anim.h`, graphe) : `pxs::interaction` | **fait** (tests : filtres, graphe) |
 | 2 | l'entrée MIDI (`Midi.h`, RtMidi) et le MIDI learn | à faire |
 | 3 | le panneau Interaction et le panneau de paramètres, rendus génériques sur l'arbre | à faire |
-| 4 | les presets (snapshots) par adresse | à faire |
+| 4 | les presets (snapshots) par adresse | **fait** : `pxs::Preset` (`capture`, `recall`), voir ci-dessous ; NyxMap l'adopte à l'étape 6 |
 | 5 | le WebSocket `LISTEN` du serveur | à faire |
 | 6 | NyxMap utilise les versions de `pxs` et supprime ses copies | à faire, en dernier |
 
@@ -86,6 +86,22 @@ Le filtre par signal de MpOsc (inversion, attaque, relâchement) devient une int
 | libellé, verrou, réinitialisation, observateurs | fait, à publier (v0.14.0) |
 | modèle des interactions (extrait de NyxMap) | fait, à publier |
 | MIDI, learn, panneaux, presets, `LISTEN` | voir le tableau des étapes |
+
+## Presets par adresse : `pxs::Preset`
+
+Un preset tient les **valeurs** de paramètres (par adresse, au format du `VALUE` d'OSCQuery) et des **actions à faire** au
+rappel, avec leurs arguments. Le rappel met les valeurs d'abord, puis fait les actions dans l'ordre : le média est mis en
+lecture, puis rembobiné. Un paramètre verrouillé garde sa valeur, une action verrouillée n'est pas faite, une adresse que
+l'arbre n'a plus est comptée sans erreur (`RecallResult`).
+
+- Par défaut : tout paramètre lisible, écrivable et sauvegardé (`Parameter::isStored`), jamais un paramètre `transient` (un
+  état du spectacle) ni une action. Une sélection d'adresses restreint.
+- **Les actions sont choisies par le preset**, pas « toutes » : rappeler un preset ne fait pas `stop` ni `go` partout.
+- Le format est du JSON (`Preset::toJson` / `fromJson`) ; l'application décide où il vit. Le fondu d'un preset, et ce qui n'est
+  pas un paramètre (animations, interactions de NyxMap), restent à l'application.
+
+**Rembobiner s'appelle `rewind`, partout** : la feuille d'action d'un média, d'un shader, d'un diaporama, d'un timecode.
+« Redémarrer » n'existe pas : c'est `play = vrai` puis `rewind`, ce qu'un preset tient avec les deux.
 
 ## Autres idées, pas encore décidées
 
