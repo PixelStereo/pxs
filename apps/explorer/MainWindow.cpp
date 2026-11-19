@@ -81,7 +81,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         say(tr("%1: %2").arg(d ? d->name : QString(), why));
     });
 
-    // A device opens when it is picked: its branches are only known then
+    // A device opens when it is picked or unfolded: its branches are only known then
+    connect(m_tree, &QTreeWidget::itemExpanded, this, [this](QTreeWidgetItem *item) {
+        if (!item->parent()) m_explorer.openDevice(quint64(item->data(0, DeviceRole).toULongLong()));
+    });
     connect(m_tree, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item) {
         if (!item->parent()) m_explorer.openDevice(quint64(item->data(0, DeviceRole).toULongLong()));
     });
@@ -127,7 +130,9 @@ void MainWindow::rebuildDevices()
         if (!item) {
             item = new QTreeWidgetItem(m_tree);
             item->setData(0, DeviceRole, QVariant::fromValue<qulonglong>(d->id));
-            item->setChildIndicatorPolicy(QTreeWidgetItem::ShowIndicator);
+            auto *waiting = new QTreeWidgetItem(item); // so that the triangle opens it: its namespace is asked then
+            waiting->setText(0, tr("…"));
+            waiting->setFlags(Qt::ItemIsEnabled);
         }
         item->setText(0, d->name.isEmpty() ? QStringLiteral("%1:%2").arg(d->host).arg(d->port) : d->name);
         item->setText(1, d->online ? QString() : tr("offline"));
