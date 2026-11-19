@@ -239,7 +239,7 @@ inline constexpr char kScriptA[] = R"JS(
 
 // B: the widgets, in SVG and CSS. Each takes its control and `io` (begin, input(v), end) and gives { el, set(v) }
 inline constexpr char kScriptB[] = R"JS(
-  const wDefault = { slider: 'vfader', toggle: 'switch', choice: 'buttons', button: 'hold', color: 'picker', pad: 'pad', adsr: 'adsr', multi: 'multi', points: 'pad' };
+  const wDefault = { slider: 'slim', toggle: 'switch', choice: 'buttons', button: 'hold', color: 'picker', pad: 'pad', adsr: 'adsr', multi: 'multi', points: 'pad' };
   const wChoices = { slider: ['fader', 'vfader', 'knob', 'number', 'slim', 'vslim', 'meter', 'hmeter', 'readout', 'graph'], toggle: ['switch', 'led'], choice: ['buttons', 'menu', 'readout'], button: ['hold', 'tap'], color: ['picker'], pad: ['pad'], adsr: ['adsr'], multi: ['multi', 'hmulti'], points: ['pad'] };
   const wName = { fader: 'Fader', vfader: 'Vertical fader', slim: 'Slim fader', vslim: 'Slim vertical fader', knob: 'Encoder', number: 'Number', switch: 'Switch', buttons: 'Buttons', menu: 'Menu', hold: 'Hold button', tap: 'Tap button', picker: 'Color', pad: 'XY pad', adsr: 'ADSR', multi: 'Multi-slider', hmulti: 'Horizontal multi-slider', meter: 'Meter', hmeter: 'Horizontal meter', readout: 'Readout', graph: 'Graph', led: 'LED' };
   const isView = c => ['meter', 'hmeter', 'readout', 'graph', 'led'].indexOf(widgetOf(c)) >= 0; // a view: it shows the value, it does not set it
@@ -431,7 +431,7 @@ inline constexpr char kScriptB2[] = R"JS(
 
 // C: pages, the grid, the tiles, Edit mode (drag, resize)
 inline constexpr char kScriptC[] = R"JS(
-  const sizeOf = c => { const w = widgetOf(c), d = sizes[w]; if (d && c.kind !== 'group') return [d[0], d[1]]; return c.kind === 'group' ? [12, 1] : c.kind === 'pad' || c.kind === 'points' ? [5, 5] : c.kind === 'adsr' ? [6, 3] : c.kind === 'multi' ? (widgetOf(c) === 'hmulti' ? [6, 5] : [8, 4]) : c.kind === 'choice' ? [6, 2] : c.kind === 'slider' ? (w === 'meter' ? [1, 5] : w === 'hmeter' ? [4, 1] : w === 'graph' ? [4, 2] : w === 'readout' ? [3, 2] : w === 'knob' ? [3, 3] : w === 'vfader' ? [2, 5] : w === 'vslim' ? [1, 5] : w === 'number' ? [3, 2] : w === 'slim' ? [4, 2] : w === 'fader' ? [4, 2] : [2, 5]) : [3, 2]; };
+  const sizeOf = c => { const w = widgetOf(c), d = sizes[w]; if (d && c.kind !== 'group') return [d[0], d[1]]; return c.kind === 'group' ? [12, 1] : c.kind === 'pad' || c.kind === 'points' ? [5, 5] : c.kind === 'adsr' ? [6, 3] : c.kind === 'multi' ? (widgetOf(c) === 'hmulti' ? [6, 5] : [8, 4]) : c.kind === 'choice' ? [6, 2] : c.kind === 'slider' ? (w === 'meter' ? [1, 5] : w === 'hmeter' ? [4, 1] : w === 'graph' ? [4, 2] : w === 'readout' ? [3, 2] : w === 'knob' ? [3, 3] : w === 'vfader' ? [2, 5] : w === 'vslim' ? [1, 5] : w === 'number' ? [3, 2] : w === 'slim' ? [4, 1] : w === 'fader' ? [4, 2] : [2, 5]) : [3, 2]; };
   const minOf = c => isView(c) ? [1, 1] : c.kind === 'pad' ? [2, 2] : c.kind === 'slider' && widgetOf(c) === 'knob' ? [2, 2] : c.kind === 'slider' && (widgetOf(c) === 'vfader' || widgetOf(c) === 'vslim') ? [1, 3] : c.kind === 'group' ? [2, 1] : [2, 1];
   const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
   const topOf = c => { let p = c.group; while (p && byId[p] && byId[p].group) p = byId[p].group; return p || 0; };
