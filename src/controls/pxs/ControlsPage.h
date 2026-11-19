@@ -99,6 +99,8 @@ input[type=color] { width:100%; height:100%; min-height:40px; max-height:80px; b
 .pad::before, .pad::after { content:""; position:absolute; background:#34343d; }
 .pad::before { left:50%; top:0; bottom:0; width:1px; } .pad::after { top:50%; left:0; right:0; height:1px; }
 .pad i.pt { display:flex; align-items:center; justify-content:center; font:700 12px -apple-system, system-ui, sans-serif; color:#14141a; background:#f2f2f5; border-color:hsl(var(--h),70%,60%); box-shadow:0 0 12px hsl(var(--h),70%,60%); pointer-events:none; }
+.rst { flex:none; width:24px; height:24px; padding:0; margin-left:6px; border-radius:6px; border:1px solid var(--line); background:var(--panel2); color:var(--dim); font-size:14px; line-height:1; cursor:pointer; }
+.rst:active { color:var(--text); }
 .pad i.pt.col { border-color:var(--bc); box-shadow:0 0 12px var(--bc); }
 .pad i.pt.hot { background:hsl(var(--h),70%,70%); }
 .pad i { position:absolute; width:26px; height:26px; margin:-13px 0 0 -13px; border-radius:50%; background:#f2f2f5; border:4px solid var(--a); box-shadow:0 0 12px var(--a); pointer-events:none; }
@@ -465,7 +467,9 @@ inline constexpr char kScriptC[] = R"JS(
     if (c.dest) { const d = el('div', 'dest', c.dest); d.title = c.dest; face.appendChild(d); } // where it comes from: Device:/address
     face.style.setProperty('--a', c.accent || '');
     if (!c.accent) face.style.removeProperty('--a');
-    hd.appendChild(name); if (c.kind === 'slider') hd.appendChild(val); face.appendChild(hd);
+    hd.appendChild(name); if (c.kind === 'slider') hd.appendChild(val);
+    if (c.reset) { const rb = el('button', 'rst', '⟲'); rb.title = 'Reset to its default'; rb.onclick = e => { e.stopPropagation(); send({ t: 'reset', id: c.id }); }; hd.appendChild(rb); } // the default of what it shows, put back
+    face.appendChild(hd);
     if (c.kind !== 'group' && c.kind !== 'toggle') {
       const bd = el('div', 'bd');
       const kindMsg = (v) => c.kind === 'adsr' ? { t: 'adsr', id: c.id, v } : c.kind === 'multi' ? { t: 'multi', id: c.id, v } : c.kind === 'points' ? { t: 'points', id: c.id, v } : { t: 'set', id: c.id, v };
@@ -548,7 +552,7 @@ inline constexpr char kScriptD[] = R"JS(
   function closeSheet() { flush(); sheetId = 0; $('#sheet').classList.remove('open'); selectTile(0); }
   // The physics of a number, as Lemur has it: Interpolate (it glides to the hand) or Mass-Spring (a spring to the hand; once let go it goes on by
   // itself with the push it got: friction, the bounce on the walls)
-  function physFields(host, ph, save) {
+  function physFields(host, ph, save, widget) {
     const p = Object.assign({}, ph), box = el('div');
     host.appendChild(el('label', '', 'Physics'));
     const mode = el('select'); [['None', 0], ['Interpolate (glides to the hand)', 1], ['Mass-Spring (thrown by the finger)', 2]].forEach(m => { const o = el('option', '', m[0]); o.value = m[1]; mode.appendChild(o); });
@@ -561,6 +565,10 @@ inline constexpr char kScriptD[] = R"JS(
       if (p.mode === 1) knob('Speed', 'rate', 0.5, 60, true);
       if (p.mode === 2) { knob('Attraction to the finger', 'attraction', 0, 400, true); knob('Tension (pulls back to where the finger was; 0: thrown)', 'tension', 0, 400, true); knob('Friction', 'friction', 0, 30, true); knob('Wall bounce', 'wall', 0, 1, false); } };
     mode.onchange = () => { p.mode = Number(mode.value); build(); save(Object.assign({}, p)); }; build();
+    if (widget) { // a slider on each setting, to play it from the page
+      host.appendChild(el('label', '', 'Widgets for these settings'));
+      const row = el('div', 'row'); [['attraction', 'Attraction'], ['tension', 'Tension'], ['friction', 'Friction'], ['wall', 'Wall'], ['rate', 'Speed']].forEach(k => { const b = el('button', '', '+ ' + k[1]); b.title = 'Add a slider for the ' + k[1].toLowerCase(); b.onclick = () => widget(k[0]); row.appendChild(b); }); host.appendChild(row);
+    }
   }
   // A pad of balls: a menu of the balls with + and -, and the range, addresses, color and physics of the chosen one
   function ballEditor(sh, c, field, text, numeric) {
@@ -581,7 +589,7 @@ inline constexpr char kScriptD[] = R"JS(
       r1.appendChild(cell('X min', numeric(b.minX, v => { b.minX = v; save(); }))); r1.appendChild(cell('X max', numeric(b.maxX, v => { b.maxX = v; save(); })));
       r2.appendChild(cell('Y min', numeric(b.minY, v => { b.minY = v; save(); }))); r2.appendChild(cell('Y max', numeric(b.maxY, v => { b.maxY = v; save(); }))); box.appendChild(r1); box.appendChild(r2);
       const sw = el('div', 'sw8'); accents.forEach(a => { const k = el('button', (b.accent || '') === a ? 'on' : '', ''); k.style.background = a || '#34343b'; k.onclick = () => { b.accent = a; save(); sw.querySelectorAll('button').forEach(o => o.classList.remove('on')); k.classList.add('on'); }; sw.appendChild(k); });
-      add('Color', sw); physFields(box, b.physics || {}, ph => { b.physics = ph; save(); });
+      add('Color', sw); physFields(box, b.physics || {}, ph => { b.physics = ph; save(); }, key => { flush(); send({ t: 'physicsWidget', id: c.id, key: (sel + 1) + '.' + key }); });
     };
     fill(); show();
   }
@@ -624,7 +632,7 @@ inline constexpr char kScriptD[] = R"JS(
       }
     }
     if (c.kind === 'points' && c.balls && c.balls.length) ballEditor(sh, c, field, text, numeric);
-    else if (c.physics) physFields(sh, c.physics, ph => push({ physics: ph }));
+    else if (c.physics) physFields(sh, c.physics, ph => push({ physics: ph }), key => { flush(); send({ t: 'physicsWidget', id: c.id, key }); });
     const del = el('button', 'del', 'Delete this control'); del.onclick = () => { if (confirm('Delete "' + c.name + '"? Its OSC address goes with it.')) { send({ t: 'remove', id: c.id }); closeSheet(); } };
     sh.appendChild(del);
     sh.classList.add('open');

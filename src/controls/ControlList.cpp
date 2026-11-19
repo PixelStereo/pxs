@@ -285,6 +285,73 @@ bool setColor(Control &c, double r, double g, double b, const Feed &feed)
     return true;
 }
 
+// A physics setting of a control by its key, with its range: null when there is none
+static double *physicsField(Control &c, const QString &key, double *lo, double *hi, QString *label)
+{
+    QString name = key;
+    Physics *p = &c.physics;
+    QString who;
+    const int dot = key.indexOf(QLatin1Char('.'));
+    if (dot > 0) {
+        const int ball = key.left(dot).toInt() - 1;
+        if (c.kind != Kind::Points || ball < 0 || size_t(ball) >= c.balls.size()) return nullptr;
+        p = &c.balls[size_t(ball)].physics;
+        name = key.mid(dot + 1);
+        who = QStringLiteral(" ball %1").arg(ball + 1);
+    }
+    struct Field { const char *key, *label; double Physics::*member; double lo, hi; };
+    static const Field fields[] = {{"friction", "friction", &Physics::friction, 0, 30}, {"attraction", "attraction", &Physics::attraction, 0, 400},
+                                   {"tension", "tension", &Physics::tension, 0, 400}, {"wall", "wall bounce", &Physics::wall, 0, 1}, {"rate", "speed", &Physics::rate, 0.5, 60}};
+    for (const Field &f : fields)
+        if (name == QLatin1String(f.key)) {
+            *lo = f.lo, *hi = f.hi;
+            if (label) *label = QString::fromLatin1(f.label) + who;
+            return &(p->*f.member);
+        }
+    return nullptr;
+}
+
+std::optional<Control> forPhysics(const Control &target, const QString &key)
+{
+    Control t = target;
+    double lo, hi;
+    QString label;
+    const double *field = physicsField(t, key, &lo, &hi, &label);
+    if (!field || !target.physical()) return std::nullopt;
+    Control c;
+    c.kind = Kind::Slider;
+    c.group = target.group;
+    c.name = target.name + QLatin1Char(' ') + label;
+    c.min = lo, c.max = hi, c.step = hi > 50 ? 1 : 0.01, c.def = *field, c.value = *field;
+    c.physTarget = target.id;
+    c.physKey = key;
+    c.boundLabel = QStringLiteral("Physics: ") + target.name;
+    return c;
+}
+
+void fillPhysics(std::vector<Control> &list)
+{
+    for (Control &c : list) {
+        if (!c.physTarget) continue;
+        Control *target = find(list, c.physTarget);
+        double lo, hi;
+        const double *field = target ? physicsField(*target, c.physKey, &lo, &hi, nullptr) : nullptr;
+        if (field) c.value = std::clamp(*field, c.min, c.max);
+    }
+}
+
+bool setPhysics(std::vector<Control> &list, quint64 id, double value)
+{
+    const Control *view = find(list, id);
+    if (!view || !view->physTarget || !std::isfinite(value)) return false;
+    Control *target = find(list, view->physTarget);
+    double lo, hi;
+    double *field = target ? physicsField(*target, view->physKey, &lo, &hi, nullptr) : nullptr;
+    if (!field) return false;
+    *field = std::clamp(value, lo, hi);
+    return true;
+}
+
 std::optional<Control> forParameter(const ParameterSource &source, quint64 scope, const QString &path, quint64 group)
 {
     ParamInfo info;

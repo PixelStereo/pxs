@@ -15,6 +15,8 @@
 //   server -> {"t":"values","v":{"<id>":<number>|[numbers]}}              what changed
 //   client -> {"t":"set","id":"<id>","v":<number>}   {"t":"color","id":..,"rgb":[r,g,b]}   {"t":"point","id":..,"xy":[x,y]}
 //             {"t":"points","id":..,"v":[x1,y1,x2,y2…]}   {"t":"multi","id":..,"v":[…]}   {"t":"adsr","id":..,"v":[a,d,s,r]}
+//   client -> {"t":"physicsWidget","id":"..","key":"friction"}   a slider for a physics setting of that control (a ball: "2.friction")
+//   client -> {"t":"reset","id":".."}   the control's reset button
 //   client -> {"t":"undo"} / {"t":"redo"}   the page's last change, back and forth (Backend::restore)
 //   client -> {"t":"rel","id":"..."}   the hand let go of a control: its physics (Control::physics) takes over
 //   client -> {"t":"drop","data":"<text>","page":"<id>","x":..,"y":..}   something dragged onto the page from outside (the application's own message: `message()`)
@@ -59,6 +61,8 @@ public:
     virtual bool setLayouts(const QHash<quint64, std::array<int, 4>> &places) = 0; // id -> x, y, w, h
     virtual bool update(quint64 id, const Control &changed) = 0;                    // a control's settings changed on the page
     virtual bool remove(quint64 id) = 0;
+    virtual quint64 add(const Control &control) { Q_UNUSED(control) return 0; } // a control made on the page (a widget for a physics setting): its id, 0: not added
+    virtual bool reset(quint64 id) { Q_UNUSED(id) return false; }               // the control's reset button: the parameters it shows go back to their defaults
     // The whole list as it was (undo, redo): its controls, their places and settings. False: this application does not undo the page
     virtual bool restore(const std::vector<Control> &controls) { Q_UNUSED(controls) return false; }
 };
