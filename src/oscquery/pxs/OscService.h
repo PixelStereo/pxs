@@ -7,7 +7,8 @@
 //   a signal fired                          -> the targets only (a stream: nobody gets it by merely writing a parameter)
 // And the WebSocket of the OSCQuery port: a client that LISTENs to an address is streamed its values (a parameter written
 // or changed, a signal fired, from any source), what it sends is applied like a UDP packet, and every client is told
-// PATH_CHANGED when the address space changes (a node made or removed, the tree cleared), coalesced over a short while.
+// PATH_ADDED / PATH_REMOVED when the address space changes (a node made or removed), coalesced over a short while; PATH_CHANGED
+// for a tree cleared or many changes at once (libossia's client follows PATH_ADDED and PATH_REMOVED, and ignores PATH_CHANGED).
 
 #include <pxs/MdnsResponder.h>
 #include <pxs/QueryServer.h>
@@ -50,7 +51,7 @@ private:
     void send(const osc::Message &message);
     void apply(const QByteArray &packet, const QHostAddress *from, quint16 port);
     void onChanged(const Node &node, const QVariantList &args); // from any thread
-    void onStructure(const QString &path);                      // from any thread
+    void onStructure(const QString &path, Tree::Change change); // from any thread
     void onPathTimer();
 
     Tree *m_tree;
@@ -63,7 +64,7 @@ private:
     int m_observer = 0;
     std::atomic<int> m_webSockets{0}; // read by the thread that writes: nothing is built when nobody listens
     QTimer m_pathTimer;
-    QString m_pathChanged; // the highest path that changed since the last PATH_CHANGED
+    QList<QPair<QString, Tree::Change>> m_pending; // the structure changes since the last message to the clients
 };
 
 } // namespace pxs

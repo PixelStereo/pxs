@@ -95,14 +95,16 @@ A node name cannot hold a space or any of `# * , ? [ ] { }` (they would break th
   or told changed (from OSC, a mapping, the panel, or the client itself), a signal that was fired. The address is exact:
   `/layer` does not give `/layer/1/opacity`. `IGNORE` stops it. Actions say nothing.
 - A binary frame is an OSC packet for the application: it is applied like a UDP one (`messageReceived` too).
-- `{"COMMAND": "PATH_CHANGED", "DATA": "/layer"}` is sent to every client when a node is made or removed (the highest
-  path that changed; what happens within 50 ms is one message).
+- `PATH_ADDED` (`DATA`: the path, and the node's own description merged into the message) when a node is made, and
+  `PATH_REMOVED` (`DATA`: the path) when one is removed; what happens within 50 ms is coalesced (nodes inside one that was
+  made are said with it). `PATH_CHANGED` (the highest path that changed) when the tree is cleared or more than 64 things
+  changed at once. libossia's client follows `PATH_ADDED` and `PATH_REMOVED` and ignores `PATH_CHANGED` (its handler is
+  empty), so a node made later is seen by it only through those two; pxs's own client and NyxMap follow all three.
 - A WebSocket can write, so a page of another origin is refused (403): only a native client (no `Origin`) or a page of this
   machine (localhost, a loopback or own address) gets in. At most 32 clients; a client more than 1 MB behind misses
   frames instead of making the application wait.
 
-What is not there: `PATH_ADDED`, `PATH_REMOVED` and `PATH_RENAMED` (`PATH_CHANGED` says the same, and the tree has no
-rename), `CRITICAL`, and TCP for the OSC itself.
+What is not there: `PATH_RENAMED` (the tree has no rename), `CRITICAL`, and TCP for the OSC itself.
 
 Threads: an observer runs on the thread that wrote; `OscService` hands what a socket must send to its own thread.
 

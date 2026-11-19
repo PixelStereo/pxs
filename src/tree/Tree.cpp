@@ -94,7 +94,7 @@ Node &Tree::add(const QString &path)
         }
         node = slot.get();
     }
-    if (!made.isEmpty() && m_structure) m_structure(made);
+    if (!made.isEmpty() && m_structure) m_structure(made, Change::Added);
     return *node;
 }
 
@@ -201,9 +201,9 @@ bool Tree::remove(const QString &path)
 {
     Node *node = find(path);
     if (!node || !node->m_parent) return false;
-    const QString parent = node->m_parent->path();
+    const QString removedPath = node->path();
     const bool removed = node->m_parent->m_children.erase(node->m_name) > 0;
-    if (removed && m_structure) m_structure(parent);
+    if (removed && m_structure) m_structure(removedPath, Change::Removed);
     return removed;
 }
 
@@ -211,7 +211,7 @@ void Tree::clear()
 {
     m_root.m_children.clear();
     m_root.description.clear();
-    if (m_structure) m_structure(QStringLiteral("/"));
+    if (m_structure) m_structure(QStringLiteral("/"), Change::Cleared);
 }
 
 std::vector<Node *> Tree::match(const QString &pattern) const

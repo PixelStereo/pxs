@@ -45,7 +45,7 @@ int main(int argc, char **argv)
 
     // HOST_INFO says what the server does
     const QJsonObject info = QJsonDocument::fromJson(service.query().answer("GET", "/?HOST_INFO").body).object();
-    CHECK(info["EXTENSIONS"].toObject()["LISTEN"] == true && info["EXTENSIONS"].toObject()["PATH_CHANGED"] == true);
+    for (const char *key : {"LISTEN", "PATH_CHANGED", "PATH_ADDED", "PATH_REMOVED"}) CHECK(info["EXTENSIONS"].toObject()[key] == true);
     CHECK(info["WS_PORT"].toInt() == int(service.httpPort()));
 
     QWebSocket ws;
@@ -90,18 +90,27 @@ int main(int argc, char **argv)
     pump(app, [&] { return level > 0.85; });
     CHECK(std::abs(level - 0.9) < 1e-6);
 
-    // The address space changes: PATH_CHANGED, once for what was made together
+    // The address space changes: PATH_ADDED with what was made (what is made together is one message), PATH_REMOVED
     tree.add("/layer/1/opacity");
     tree.add("/layer/1/mode");
     pump(app, [&] { return !texts.isEmpty(); });
     pump(app, [&] { return false; }, 150);
     CHECK(texts.size() == 1);
-    const QJsonObject changed = QJsonDocument::fromJson(texts.value(0).toUtf8()).object();
-    CHECK(changed["COMMAND"] == "PATH_CHANGED" && changed["DATA"] == "/layer");
+    const QJsonObject added = QJsonDocument::fromJson(texts.value(0).toUtf8()).object();
+    CHECK(added["COMMAND"] == "PATH_ADDED" && added["DATA"] == "/layer" && added["FULL_PATH"] == "/layer");
+    CHECK(added["CONTENTS"].toObject()["1"].toObject()["CONTENTS"].toObject().contains("mode"));
     texts.clear();
     tree.remove("/layer/1/mode");
     pump(app, [&] { return !texts.isEmpty(); });
-    CHECK(QJsonDocument::fromJson(texts.value(0).toUtf8()).object()["DATA"] == "/layer/1");
+    const QJsonObject removed = QJsonDocument::fromJson(texts.value(0).toUtf8()).object();
+    CHECK(removed["COMMAND"] == "PATH_REMOVED" && removed["DATA"] == "/layer/1/mode");
+    texts.clear();
+    // Too much at once, or everything gone: PATH_CHANGED, the highest path that changed
+    for (int k = 0; k < 100; ++k) tree.add(QStringLiteral("/bulk/%1").arg(k));
+    pump(app, [&] { return !texts.isEmpty(); });
+    pump(app, [&] { return false; }, 150);
+    const QJsonObject changed = QJsonDocument::fromJson(texts.value(0).toUtf8()).object();
+    CHECK(texts.size() == 1 && changed["COMMAND"] == "PATH_CHANGED" && changed["DATA"] == "/bulk");
 
     // A page of another site is refused (a WebSocket writes); one of this machine is let in
     QWebSocket evil(QStringLiteral("http://evil.example"));

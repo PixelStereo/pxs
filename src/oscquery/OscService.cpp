@@ -36,11 +36,13 @@ bool OscService::start(quint16 oscPort, quint16 httpPort, bool announce)
     QJsonObject extensions = Tree::defaultExtensions();
     extensions["LISTEN"] = true;       // the WebSocket of the same port (IGNORE comes with it)
     extensions["PATH_CHANGED"] = true;
+    extensions["PATH_ADDED"] = true;
+    extensions["PATH_REMOVED"] = true;
     m_http.setExtensions(extensions);
     m_http.setHostInfoMore(QJsonObject{{"WS_PORT", int(m_http.port())}});
     m_tree->setOutput([this](const osc::Message &m) { send(m); });
     m_observer = m_tree->addObserver([this](const Node &n, const QVariantList &args) { onChanged(n, args); });
-    m_tree->setStructureObserver([this](const QString &path) { onStructure(path); });
+    m_tree->setStructureObserver([this](const QString &path, Tree::Change change) { onStructure(path, change); });
     if (announce) {
         const QString type = QStringLiteral("_oscjson._tcp");
         m_mdns.start(m_name, {{type, m_http.port()}, {QStringLiteral("_osc._udp"), m_udp.localPort()}});
@@ -59,7 +61,7 @@ void OscService::stop()
     m_observer = 0;
     m_tree->setStructureObserver(nullptr);
     m_pathTimer.stop();
-    m_pathChanged.clear();
+    m_pending.clear();
 }
 
 void OscService::addTarget(const QHostAddress &address, quint16 port)
@@ -120,22 +122,54 @@ static QString commonPath(const QString &a, const QString &b)
     return out.isEmpty() ? QStringLiteral("/") : out;
 }
 
-void OscService::onStructure(const QString &path)
+static bool isUnder(const QString &path, const QString &parent) { return path.startsWith(parent == QLatin1String("/") ? parent : parent + '/'); }
+
+void OscService::onStructure(const QString &path, Tree::Change change)
 {
     if (m_webSockets.load() == 0) return;
-    const auto note = [this, path] {
-        m_pathChanged = commonPath(m_pathChanged, path);
+    const auto note = [this, path, change] {
+        m_pending.append({path, change});
         if (!m_pathTimer.isActive()) m_pathTimer.start(); // a layer made of dozens of nodes is one message
     };
     if (QThread::currentThread() == thread()) note();
     else QMetaObject::invokeMethod(this, note, Qt::QueuedConnection);
 }
 
+// What the clients are told of the changes of the last moments: each node made (with what it holds, the node's own description
+// merged into the message: a client reads the node from it) and each node removed; PATH_CHANGED when the tree was cleared or
+// too much changed to say it one by one
 void OscService::onPathTimer()
 {
-    if (m_pathChanged.isEmpty()) return;
-    m_http.broadcast(QJsonDocument(QJsonObject{{"COMMAND", "PATH_CHANGED"}, {"DATA", m_pathChanged}}).toJson(QJsonDocument::Compact));
-    m_pathChanged.clear();
+    const auto pending = m_pending;
+    m_pending.clear();
+    constexpr int kMostMessages = 64;
+    bool all = pending.size() > kMostMessages;
+    QString common;
+    for (const auto &c : pending) {
+        all |= c.second == Tree::Change::Cleared;
+        common = commonPath(common, c.first);
+    }
+    const auto send = [this](const QJsonObject &o) { m_http.broadcast(QJsonDocument(o).toJson(QJsonDocument::Compact)); };
+    if (all) {
+        if (!pending.isEmpty()) send(QJsonObject{{"COMMAND", "PATH_CHANGED"}, {"DATA", common}});
+        return;
+    }
+    for (int k = 0; k < pending.size(); ++k) {
+        const QString &path = pending[k].first;
+        bool covered = false; // a node inside one made (or removed) in the same moment is said with it
+        for (int j = 0; j < pending.size() && !covered; ++j)
+            covered = j != k && pending[j].second == pending[k].second && isUnder(path, pending[j].first);
+        if (covered) continue;
+        if (pending[k].second == Tree::Change::Added) {
+            QJsonObject node = m_tree->json(path);
+            if (node.isEmpty()) continue; // gone again before it was said
+            node["COMMAND"] = "PATH_ADDED";
+            node["DATA"] = path;
+            send(node);
+        } else {
+            send(QJsonObject{{"COMMAND", "PATH_REMOVED"}, {"DATA", path}});
+        }
+    }
 }
 
 void OscService::send(const osc::Message &message)
