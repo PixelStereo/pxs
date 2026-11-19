@@ -68,11 +68,21 @@ set_target_properties(pxs_bind PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(pxs_bind PUBLIC src/bind)
 target_link_libraries(pxs_bind PUBLIC pxs::tree pxs::widgets)
 
+# Controls: the model of a control (kinds, JSON, its place on the page) and the page an application serves for them: a free grid,
+# pages for the groups, Edit mode, SVG widgets. Header only; Qt Core.
+add_library(pxs_controls INTERFACE)
+add_library(pxs::controls ALIAS pxs_controls)
+target_include_directories(pxs_controls INTERFACE src/controls)
+target_link_libraries(pxs_controls INTERFACE Qt6::Core)
+
 if(PXS_BUILD_TESTS)
     enable_testing()
     add_executable(pxs_osc_test test/osc_test.cpp)
     target_link_libraries(pxs_osc_test PRIVATE pxs::osc)
     add_test(NAME osc COMMAND pxs_osc_test)
+    add_executable(pxs_controls_test test/controls_test.cpp)
+    target_link_libraries(pxs_controls_test PRIVATE pxs::controls)
+    add_test(NAME controls COMMAND pxs_controls_test)
     add_executable(pxs_params_test test/params_test.cpp)
     target_link_libraries(pxs_params_test PRIVATE pxs::params)
     add_test(NAME params COMMAND pxs_params_test)
