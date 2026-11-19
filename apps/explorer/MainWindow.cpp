@@ -1,6 +1,12 @@
 #include "MainWindow.h"
 
 #include <QAction>
+#include <QShortcut>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QMenuBar>
+#include <QSaveFile>
 #include <QHeaderView>
 #include <QStatusBar>
 #include <QChildEvent>
@@ -66,12 +72,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     split->setSizes({340, 940});
     setCentralWidget(split);
 
+    QMenu *file = menuBar()->addMenu(tr("File"));
+    file->addAction(tr("Open…"), QKeySequence::Open, this, &MainWindow::openFile);
+    file->addAction(tr("Save"), QKeySequence::Save, this, [this] { saveFile(false); });
+    file->addAction(tr("Save As…"), QKeySequence::SaveAs, this, [this] { saveFile(true); });
+
     auto *bar = addToolBar(tr("Devices"));
     bar->setMovable(false);
     bar->addAction(tr("Add device…"), this, &MainWindow::addByHand);
     m_share = new QLabel;
     m_share->setTextInteractionFlags(Qt::TextSelectableByMouse);
     statusBar()->addPermanentWidget(m_share);
+
+    // Cmd/Ctrl+E: the page's edit mode (the page itself takes it when it has the keyboard)
+    auto *editKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_E), m_tree);
+    editKey->setContext(Qt::WidgetShortcut);
+    connect(editKey, &QShortcut::activated, this, [this] { m_view->page()->runJavaScript(QStringLiteral("var b=document.getElementById('edit'); if (b && !b.hidden) b.click();")); });
 
     connect(&m_explorer, &Explorer::devicesChanged, this, &MainWindow::rebuildDevices);
     connect(&m_explorer, &Explorer::deviceReady, this, &MainWindow::fillDevice);
@@ -99,9 +115,29 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         if (!item->parent()) {
             menu.addAction(tr("Connect"), [this, item] { m_explorer.openDevice(quint64(item->data(0, DeviceRole).toULongLong())); });
         } else if (item->data(0, AddableRole).toBool()) {
-            menu.addAction(tr("Add to controls page"), [this, item] {
-                addPath(quint64(item->data(0, DeviceRole).toULongLong()), item->data(0, PathRole).toString());
-            });
+            // What is picked (the item right-clicked, when it is not in the selection)
+            QList<Target> targets;
+            const auto picked = item->isSelected() ? m_tree->selectedItems() : QList<QTreeWidgetItem *>{item};
+            for (const QTreeWidgetItem *p : picked)
+                if (p->data(0, AddableRole).toBool())
+                    targets.append({quint64(p->data(0, DeviceRole).toULongLong()), p->data(0, PathRole).toString()});
+            const bool sameDevice = std::all_of(targets.begin(), targets.end(), [&](const Target &t) { return t.first == targets.first().first; });
+            const auto widgets = m_explorer.widgetsFor(targets.first().first, targets.first().second);
+            const bool numeric = !widgets.isEmpty() && widgets.first().first == QLatin1String("vfader");
+            const auto submenu = [&](QMenu *into, const QString &title) {
+                QMenu *sub = into->addMenu(title);
+                for (const auto &w : widgets) sub->addAction(w.second, [this, targets, w] { addTargets(targets, w.first, false); });
+            };
+            if (targets.size() == 1) {
+                menu.addAction(tr("Add to controls page"), [this, targets] { addTargets(targets); });
+                submenu(&menu, tr("Add as"));
+            } else if (targets.size() == 2 && sameDevice && numeric) {
+                menu.addAction(tr("Add as an XY pad"), [this, targets] { addTargets(targets); });
+                submenu(&menu, tr("Add as two"));
+            } else {
+                menu.addAction(tr("Add %1 controls").arg(targets.size()), [this, targets] { addTargets(targets, QString(), false); });
+                if (numeric && sameDevice) submenu(&menu, tr("Add all as"));
+            }
         } else if (item->childCount()) {
             menu.addAction(tr("Add all its parameters to the page"), [this, item] { addBelow(item); });
         }
@@ -200,10 +236,24 @@ void MainWindow::fillDevice(quint64 id)
     if (item->childCount() == 1 && open.isEmpty()) item->child(0)->setExpanded(true);
 }
 
-void MainWindow::addPath(quint64 device, const QString &path)
+void MainWindow::addPath(quint64 device, const QString &path) { addTargets({{device, path}}); }
+
+// Controls for these parameters. Two numbers of one device make an XY pad (`pad`), unless a widget is asked for: then each gets it
+void MainWindow::addTargets(const QList<Target> &targets, const QString &widget, bool pad)
 {
-    if (m_explorer.addControl(device, path)) say(tr("Added %1").arg(path));
-    else say(tr("%1 cannot be shown as a control").arg(path));
+    if (targets.isEmpty()) return;
+    const auto numeric = [this](const Target &t) {
+        const auto w = m_explorer.widgetsFor(t.first, t.second);
+        return !w.isEmpty() && w.first().first == QLatin1String("vfader");
+    };
+    if (pad && widget.isEmpty() && targets.size() == 2 && targets[0].first == targets[1].first && numeric(targets[0]) && numeric(targets[1])) {
+        say(m_explorer.addPad(targets[0].first, targets[0].second, targets[1].second) ? tr("Added an XY pad") : tr("These cannot make a pad"));
+        return;
+    }
+    int added = 0;
+    for (const Target &t : targets)
+        if (m_explorer.addControl(t.first, t.second, widget)) ++added;
+    say(added ? tr("Added %n control(s)", nullptr, added) : tr("Not shown as a control"));
 }
 
 void MainWindow::addBelow(QTreeWidgetItem *item)
@@ -220,6 +270,46 @@ void MainWindow::addBelow(QTreeWidgetItem *item)
     };
     walk(item);
     say(tr("Added %1 controls").arg(added));
+}
+
+static const char *kFilter = "OSCQuery Explorer interface (*.oscpage);;All files (*)";
+
+void MainWindow::setFile(const QString &path)
+{
+    m_file = path;
+    setWindowTitle(path.isEmpty() ? tr("OSCQuery Explorer") : tr("%1 — OSCQuery Explorer").arg(QFileInfo(path).completeBaseName()));
+}
+
+void MainWindow::openFile()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Open an interface"), m_file, tr(kFilter));
+    if (path.isEmpty()) return;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return say(tr("Cannot read %1").arg(path));
+    QJsonParseError parse;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.read(32 << 20), &parse);
+    QString why;
+    if (parse.error != QJsonParseError::NoError || !m_explorer.fromJson(doc.object(), &why)) return say(tr("%1: %2").arg(QFileInfo(path).fileName(), why.isEmpty() ? parse.errorString() : why));
+    setFile(path);
+    say(tr("Opened %1").arg(QFileInfo(path).fileName()));
+}
+
+bool MainWindow::saveFile(bool as)
+{
+    QString path = m_file;
+    if (as || path.isEmpty()) {
+        path = QFileDialog::getSaveFileName(this, tr("Save the interface"), m_file.isEmpty() ? QStringLiteral("Interface.oscpage") : m_file, tr(kFilter));
+        if (path.isEmpty()) return false;
+        if (QFileInfo(path).suffix().isEmpty()) path += QStringLiteral(".oscpage");
+    }
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly) || f.write(QJsonDocument(m_explorer.toJson()).toJson()) < 0 || !f.commit()) {
+        say(tr("Cannot write %1").arg(path));
+        return false;
+    }
+    setFile(path);
+    say(tr("Saved %1").arg(QFileInfo(path).fileName()));
+    return true;
 }
 
 void MainWindow::addByHand()
@@ -259,12 +349,12 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     case QEvent::Drop: {
         auto *e = static_cast<QDropEvent *>(event);
         if (!e->mimeData()->hasFormat(AddressTree::kMime)) break;
-        int added = 0;
+        QList<Target> targets;
         for (const QJsonValue &v : QJsonDocument::fromJson(e->mimeData()->data(AddressTree::kMime)).array()) {
             const QJsonObject o = v.toObject();
-            if (m_explorer.addControl(o.value("device").toString().toULongLong(), o.value("path").toString())) ++added;
+            targets.append({o.value("device").toString().toULongLong(), o.value("path").toString()});
         }
-        say(tr("Added %n control(s)", nullptr, added));
+        addTargets(targets);
         e->acceptProposedAction();
         return true;
     }

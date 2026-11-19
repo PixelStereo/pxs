@@ -33,6 +33,7 @@ header h1 { flex:1; margin:0 10px 0 0; font-size:16px; font-weight:600; white-sp
 .tile.sec .face { background:transparent; border:0; border-bottom:1px solid var(--line); border-radius:0; padding:12px 2px 0; }
 .sec .hd { font-size:13px; }
 .hd { display:flex; justify-content:space-between; align-items:baseline; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); white-space:nowrap; }
+.dest { font-size:10px; color:var(--dim); opacity:.8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family:ui-monospace,Menlo,monospace; }
 .hd span { overflow:hidden; text-overflow:ellipsis; }
 .hd b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:0; margin-left:8px; }
 .bd { flex:1; min-height:0; position:relative; display:flex; align-items:center; justify-content:center; }
@@ -220,7 +221,7 @@ inline constexpr char kScriptA[] = R"JS(
 
 // B: the widgets, in SVG and CSS. Each takes its control and `io` (begin, input(v), end) and gives { el, set(v) }
 inline constexpr char kScriptB[] = R"JS(
-  const wDefault = { slider: 'fader', toggle: 'switch', choice: 'buttons', button: 'hold', color: 'picker', pad: 'pad', adsr: 'adsr', multi: 'multi', points: 'pad' };
+  const wDefault = { slider: 'vfader', toggle: 'switch', choice: 'buttons', button: 'hold', color: 'picker', pad: 'pad', adsr: 'adsr', multi: 'multi', points: 'pad' };
   const wChoices = { slider: ['fader', 'vfader', 'knob', 'number', 'slim', 'vslim'], toggle: ['switch'], choice: ['buttons', 'menu'], button: ['hold', 'tap'], color: ['picker'], pad: ['pad'], adsr: ['adsr'], multi: ['multi', 'hmulti'], points: ['pad'] };
   const wName = { fader: 'Fader', vfader: 'Vertical fader', slim: 'Slim fader', vslim: 'Slim vertical fader', knob: 'Encoder', number: 'Number', switch: 'Switch', buttons: 'Buttons', menu: 'Menu', hold: 'Hold button', tap: 'Tap button', picker: 'Color', pad: 'XY pad', adsr: 'ADSR', multi: 'Multi-slider', hmulti: 'Horizontal multi-slider' };
   const widgetOf = c => (wChoices[c.kind] || []).indexOf(c.widget) >= 0 ? c.widget : wDefault[c.kind];
@@ -368,7 +369,7 @@ inline constexpr char kScriptB2[] = R"JS(
 
 // C: pages, the grid, the tiles, Edit mode (drag, resize)
 inline constexpr char kScriptC[] = R"JS(
-  const sizeOf = c => { const w = widgetOf(c); return c.kind === 'group' ? [12, 1] : c.kind === 'pad' || c.kind === 'points' ? [5, 5] : c.kind === 'adsr' ? [6, 3] : c.kind === 'multi' ? (widgetOf(c) === 'hmulti' ? [6, 5] : [8, 4]) : c.kind === 'choice' ? [6, 2] : c.kind === 'slider' ? (w === 'knob' ? [3, 3] : w === 'vfader' ? [2, 6] : w === 'vslim' ? [1, 5] : w === 'number' ? [3, 2] : w === 'slim' ? [5, 2] : [6, 3]) : [3, 2]; };
+  const sizeOf = c => { const w = widgetOf(c); return c.kind === 'group' ? [12, 1] : c.kind === 'pad' || c.kind === 'points' ? [5, 5] : c.kind === 'adsr' ? [6, 3] : c.kind === 'multi' ? (widgetOf(c) === 'hmulti' ? [6, 5] : [8, 4]) : c.kind === 'choice' ? [6, 2] : c.kind === 'slider' ? (w === 'knob' ? [3, 3] : w === 'vfader' ? [2, 5] : w === 'vslim' ? [1, 5] : w === 'number' ? [3, 2] : w === 'slim' ? [4, 2] : w === 'fader' ? [4, 2] : [2, 5]) : [3, 2]; };
   const minOf = c => c.kind === 'pad' ? [2, 2] : c.kind === 'slider' && widgetOf(c) === 'knob' ? [2, 2] : c.kind === 'slider' && (widgetOf(c) === 'vfader' || widgetOf(c) === 'vslim') ? [1, 3] : c.kind === 'group' ? [2, 1] : [2, 1];
   const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
   const topOf = c => { let p = c.group; while (p && byId[p] && byId[p].group) p = byId[p].group; return p || 0; };
@@ -406,6 +407,7 @@ inline constexpr char kScriptC[] = R"JS(
   function tile(it) {
     const c = it.c, t = { it, el: el('div', 'tile' + (c.kind === 'group' ? ' sec' : '')), api: null };
     const face = el('div', 'face'), hd = el('div', 'hd'), name = el('span', '', c.name), val = el('b');
+    if (c.dest) { const d = el('div', 'dest', c.dest); d.title = c.dest; face.appendChild(d); } // where it comes from: Device:/address
     face.style.setProperty('--a', c.accent || '');
     if (!c.accent) face.style.removeProperty('--a');
     hd.appendChild(name); if (c.kind === 'slider') hd.appendChild(val); face.appendChild(hd);
@@ -462,6 +464,7 @@ inline constexpr char kScriptC[] = R"JS(
   }
   window.addEventListener('resize', () => { if (items.length) placeAll(); });
   window.addEventListener('orientationchange', () => setTimeout(() => { if (items.length) placeAll(); }, 250));
+  document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E') && $('#edit').style.display !== 'none' && !$('#edit').hidden) { e.preventDefault(); $('#edit').click(); } }); // Cmd/Ctrl+E
   $('#edit').onclick = () => { editing = !editing; $('#edit').classList.toggle('on', editing); if (!editing) closeSheet(); render(); };
 )JS";
 

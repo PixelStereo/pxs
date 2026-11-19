@@ -5,6 +5,7 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QJsonArray>
 #include <cmath>
 #include <cstdio>
 
@@ -69,6 +70,50 @@ int main(int argc, char **argv)
     CHECK(ex.update(id, renamed) && ex.control(id)->key == "master" && ex.control(id)->boundParam == "/mix/level");
     CHECK(ex.remove(id) && !ex.control(id) && ex.controls().size() == 1);
     CHECK(!ex.remove(id));
+
+    // Two parameters make a pad, 0..1 on each, mapped to each one's range
+    auto r = std::make_unique<Parameter>("rate", "Rate", Parameter::Type::Float);
+    double rate = 10;
+    r->range(0, 20).bind([&] { return QVariant(rate); }, [&](const QVariant &v) { rate = v.toDouble(); });
+    tree.add("/mix/rate", std::move(r));
+    ready = false;
+    ex.openDevice(dev);
+    ex.device(dev)->client->refresh();
+    pump([&] { return ex.device(dev)->client->tree().find("/mix/rate") != nullptr; });
+    level = 0.5;
+    const quint64 pad = ex.addPad(dev, "/mix/level", "/mix/rate");
+    CHECK(pad != 0);
+    pump([&] { return std::abs(ex.control(pad)->value - 0.5) < 1e-6; }); // asked for when it was added
+    auto pc = ex.control(pad);
+    CHECK(pc && pc->kind == pxs::controls::Control::Kind::Pad && std::abs(pc->value - 0.5) < 1e-6);
+    pump([&] { return std::abs(ex.control(pad)->value2 - 0.5) < 1e-6; });
+    CHECK(std::abs(ex.control(pad)->value2 - 0.5) < 1e-6 && pc->boundLabel == "Device:/mix/level, /mix/rate");
+    CHECK(ex.setPoint(pad, 0.25, 0.75));
+    pump([&] { return std::abs(rate - 15) < 1e-4; });
+    CHECK(std::abs(level - 0.25) < 1e-4 && std::abs(rate - 15) < 1e-4);
+    CHECK(ex.addControl(dev, "/mix/level", "knob") != 0);
+    CHECK(ex.controls().back().widget == "knob" && ex.controls().back().boundLabel == "Device:/mix/level");
+    const quint64 plain = ex.addControl(dev, "/mix/level", "hold");
+    CHECK(plain != 0 && ex.control(plain)->widget.isEmpty()); // a widget of another kind is ignored
+
+    // The interface is kept and found again
+    const QJsonObject saved = ex.toJson();
+    CHECK(saved.value("devices").toArray().size() == 1);
+    const size_t count = ex.controls().size();
+    Explorer other;
+    CHECK(!other.fromJson(QJsonObject{{"format", "nope"}}));
+    CHECK(other.fromJson(saved));
+    CHECK(other.controls().size() == count);
+    CHECK(other.devices().size() == 1 && other.devices()[0]->name == "Device");
+    bool back = false;
+    QObject::connect(&other, &Explorer::deviceReady, [&](quint64) { back = true; });
+    pump([&] { return back; });
+    CHECK(back);
+    quint64 padId = 0;
+    for (const auto &c : other.controls()) if (c.boundParam2 == "/mix/rate") padId = c.id;
+    CHECK(padId && other.control(padId)->boundScope == other.devices()[0]->id);
+    pump([&] { return std::abs(other.control(padId)->value - 0.25) < 1e-3; });
+    CHECK(std::abs(other.control(padId)->value - 0.25) < 1e-3);
 
     // The page is served on the loopback
     CHECK(ex.serve() && ex.pageUrl().startsWith("http://127.0.0.1:"));

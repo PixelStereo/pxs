@@ -1,6 +1,8 @@
 #include "Explorer.h"
 
+#include <QJsonArray>
 #include <QNetworkInterface>
+#include <QSet>
 
 using namespace pxs;
 using pxs::controls::Control;
@@ -110,20 +112,133 @@ void Explorer::listenAll(quint64 deviceId)
         if (c.boundScope != deviceId || c.boundParam.isEmpty()) continue;
         if (c.kind == Control::Kind::Color) continue;
         d->client->listen(c.boundParam);
+        if (!c.boundParam2.isEmpty()) d->client->listen(c.boundParam2);
     }
 }
 
-quint64 Explorer::addControl(quint64 deviceId, const QString &path, quint64 group)
+quint64 Explorer::addControl(quint64 deviceId, const QString &path, const QString &widget, quint64 group)
 {
     Dev *d = device(deviceId);
     if (!d || !d->client || d->client->state() != oscquery::Client::State::Ready) return 0;
     std::optional<Control> c = controls::forParameter(*this, deviceId, path, group);
     if (!c) return 0;
+    if (!widget.isEmpty()) {
+        const auto allowed = widgetsFor(deviceId, path);
+        if (std::any_of(allowed.begin(), allowed.end(), [&](const auto &w) { return w.first == widget; })) c->widget = widget;
+    }
+    c->boundLabel = d->name + QLatin1Char(':') + path;
     const quint64 id = controls::add(m_controls, m_nextControl, *c, makeKey);
     if (!id) return 0;
     d->client->listen(path);
     changed();
     return id;
+}
+
+quint64 Explorer::addPad(quint64 deviceId, const QString &pathX, const QString &pathY, quint64 group)
+{
+    Dev *d = device(deviceId);
+    if (!d || !d->client || d->client->state() != oscquery::Client::State::Ready) return 0;
+    std::optional<Control> c = controls::forParameters(*this, deviceId, pathX, pathY, group);
+    if (!c) return 0;
+    c->boundLabel = d->name + QLatin1Char(':') + pathX + QStringLiteral(", ") + pathY;
+    const quint64 id = controls::add(m_controls, m_nextControl, *c, makeKey);
+    if (!id) return 0;
+    d->client->listen(pathX);
+    d->client->listen(pathY);
+    changed();
+    return id;
+}
+
+QList<QPair<QString, QString>> Explorer::widgetsFor(quint64 deviceId, const QString &path) const
+{
+    ParamInfo info;
+    if (!this->info(deviceId, path, &info) || !(info.access & ParamInfo::Write) || info.type == ParamInfo::Type::Text) return {};
+    if (info.isNumber())
+        return {{"vfader", "Vertical fader"}, {"fader", "Fader"}, {"knob", "Encoder"}, {"number", "Number"}, {"slim", "Slim fader"}, {"vslim", "Slim vertical fader"}};
+    if (info.type == ParamInfo::Type::Choice) return {{"buttons", "Buttons"}, {"menu", "Menu"}};
+    if (info.type == ParamInfo::Type::Trigger) return {{"hold", "Hold button"}, {"tap", "Tap button"}};
+    return {{"switch", "Switch"}};
+}
+
+// The interface
+
+QJsonObject Explorer::toJson() const
+{
+    QJsonArray devices, list;
+    for (const Control &c : m_controls) {
+        if (c.boundScope && !std::any_of(devices.begin(), devices.end(), [&](const QJsonValue &v) { return v.toObject().value("id").toString().toULongLong() == c.boundScope; })) {
+            if (const Dev *d = device(c.boundScope))
+                devices.append(QJsonObject{{"id", QString::number(d->id)}, {"name", d->name}, {"host", d->host}, {"port", d->port}});
+        }
+        list.append(c.toJson());
+    }
+    return QJsonObject{{"format", "pxs-explorer"}, {"version", 1}, {"devices", devices}, {"controls", list}};
+}
+
+void Explorer::clearControls()
+{
+    for (const Control &c : m_controls)
+        for (const QString &p : {c.boundParam, c.boundParam2})
+            if (!p.isEmpty())
+                if (Dev *d = device(c.boundScope); d && d->client) d->client->ignore(p);
+    m_controls.clear();
+    changed();
+}
+
+bool Explorer::fromJson(const QJsonObject &o, QString *error)
+{
+    if (o.value("format").toString() != QLatin1String("pxs-explorer")) {
+        if (error) *error = QStringLiteral("Not an explorer interface");
+        return false;
+    }
+    const QJsonArray list = o.value("controls").toArray();
+    if (list.size() > controls::kMaxControls) {
+        if (error) *error = QStringLiteral("Too many controls");
+        return false;
+    }
+    // The devices it names: the one known by that name, else one added (offline until it is found)
+    QHash<quint64, quint64> scopes; // saved id -> id here
+    for (const QJsonValue &v : o.value("devices").toArray()) {
+        const QJsonObject d = v.toObject();
+        const quint64 saved = d.value("id").toString().toULongLong();
+        const QString name = d.value("name").toString();
+        const quint16 port = quint16(d.value("port").toInt());
+        if (!saved || name.isEmpty()) continue;
+        quint64 id = 0;
+        for (const auto &known : m_devices)
+            if (known->name == name) id = known->id;
+        if (!id) id = addDevice(name, d.value("host").toString(), port);
+        scopes.insert(saved, id);
+    }
+    clearControls();
+    std::vector<Control> next;
+    quint64 highest = 0;
+    for (const QJsonValue &v : list) {
+        if (!v.isObject()) continue;
+        Control c = Control::fromJson(v.toObject());
+        if (!c.boundParam.isEmpty()) {
+            const auto it = scopes.constFind(c.boundScope);
+            if (it == scopes.cend()) continue; // a view of a device the file does not give
+            c.boundScope = it.value();
+        }
+        highest = std::max(highest, c.id);
+        next.push_back(std::move(c));
+    }
+    QSet<quint64> ids;
+    for (Control &c : next) {
+        if (!c.id || ids.contains(c.id)) c.id = ++highest;
+        ids.insert(c.id);
+    }
+    controls::keyAll(next, makeKey);
+    controls::tidyGroups(next);
+    m_controls = std::move(next);
+    m_nextControl = std::max(m_nextControl, highest + 1);
+    changed();
+    for (quint64 id : std::as_const(scopes)) { // their values come when they answer
+        openDevice(id);
+        listenAll(id);
+    }
+    return true;
 }
 
 // The page
@@ -168,7 +283,12 @@ bool Explorer::setValue(quint64 id, double value)
     return controls::setValue(m_controls, id, value, {});
 }
 
-bool Explorer::setPoint(quint64 id, double x, double y) { return controls::setPoint(m_controls, id, x, y, {}); }
+bool Explorer::setPoint(quint64 id, double x, double y)
+{
+    const Control *c = controls::find(m_controls, id);
+    if (c && !c->boundParam2.isEmpty()) return controls::setBoundPoint(*c, *this, x, y); // a pad over two parameters
+    return controls::setPoint(m_controls, id, x, y, {});
+}
 bool Explorer::setPoints(quint64 id, const std::vector<double> &xy) { return controls::setPoints(m_controls, id, xy, {}); }
 bool Explorer::setMulti(quint64 id, const std::vector<double> &v) { return controls::setMulti(m_controls, id, v, {}); }
 bool Explorer::setAdsr(quint64 id, const std::array<double, 4> &v) { return controls::setAdsr(m_controls, id, v, {}); }
@@ -199,12 +319,15 @@ bool Explorer::remove(quint64 id)
     const Control *c = controls::find(m_controls, id);
     if (!c) return false;
     const quint64 scope = c->boundScope;
-    const QString path = c->boundParam;
+    const QString path = c->boundParam, path2 = c->boundParam2;
     if (!controls::remove(m_controls, id)) return false;
     if (scope && !path.isEmpty()) { // nothing else shows it: not listened to any more
-        const bool used = std::any_of(m_controls.begin(), m_controls.end(), [&](const Control &o) { return o.boundScope == scope && o.boundParam == path; });
-        if (!used)
-            if (Dev *d = device(scope); d && d->client) d->client->ignore(path);
+        for (const QString &p : {path, path2}) {
+            if (p.isEmpty()) continue;
+            const bool used = std::any_of(m_controls.begin(), m_controls.end(), [&](const Control &o) { return o.boundScope == scope && (o.boundParam == p || o.boundParam2 == p); });
+            if (!used)
+                if (Dev *d = device(scope); d && d->client) d->client->ignore(p);
+        }
     }
     changed();
     return true;

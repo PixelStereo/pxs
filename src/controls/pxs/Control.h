@@ -40,6 +40,8 @@ struct Control {
     // shows on the page too
     quint64 boundScope = 0;
     QString boundParam;
+    QString boundParam2; // a Pad that is a view of two parameters: the second one (its Y); the pad is 0..1 on both axes, each mapped to its parameter's own range
+    QString boundLabel;  // where it comes from, for the page to show on the tile ("Device:/layer.1/opacity")
     int columns = 2;   // Group: how many columns it lays its controls out in (1..4)
     double min = 0, max = 1, step = 0.01; // Slider, Pad (both axes)
     QString unit;                         // Slider: " %", " Hz", " s"
@@ -141,7 +143,12 @@ struct Control {
         QJsonObject o{{"id", QString::number(id)}, {"name", name}, {"key", key}, {"kind", kindKey(kind)}};
         if (group) o["group"] = QString::number(group);
         if (span != 1) o["span"] = span;
-        if (!boundParam.isEmpty()) o["bind"] = QJsonObject{{"scope", QString::number(boundScope)}, {"param", boundParam}};
+        if (!boundParam.isEmpty()) {
+            QJsonObject b{{"scope", QString::number(boundScope)}, {"param", boundParam}};
+            if (!boundParam2.isEmpty()) b["param2"] = boundParam2;
+            if (!boundLabel.isEmpty()) b["label"] = boundLabel;
+            o["bind"] = b;
+        }
         if (!widget.isEmpty()) o["widget"] = widget;
         if (!accent.isEmpty()) o["accent"] = accent;
         if (curve != 1) o["curve"] = curve;
@@ -248,6 +255,7 @@ struct Control {
         QJsonObject o{{"id", QString::number(id)}, {"name", name}, {"key", key}, {"kind", kindKey(kind)}};
         if (group) o["group"] = QString::number(group);
         o["span"] = span;
+        if (!boundParam.isEmpty() && !boundLabel.isEmpty()) o["dest"] = boundLabel;
         if (!widget.isEmpty()) o["widget"] = widget;
         if (!accent.isEmpty()) o["accent"] = accent;
         if (curve != 1) o["curve"] = curve;
@@ -326,6 +334,8 @@ struct Control {
         if (const QJsonObject b = o.value("bind").toObject(); !b.value("param").toString().isEmpty()) {
             c.boundScope = b.value("scope").toString().toULongLong();
             c.boundParam = b.value("param").toString();
+            c.boundParam2 = b.value("param2").toString();
+            c.boundLabel = b.value("label").toString().left(160);
         }
         c.widget = cleanWidget(o.value("widget").toString());
         c.accent = cleanAccent(o.value("accent").toString());

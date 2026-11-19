@@ -316,8 +316,68 @@ std::optional<Control> forParameter(const ParameterSource &source, quint64 scope
     return c;
 }
 
+// A number of a pad's axis, 0..1 over its parameter's range
+static bool axis(const ParameterSource &source, quint64 scope, const QString &path, ParamInfo *info, double *lo, double *hi)
+{
+    if (!source.info(scope, path, info) || !info->isNumber()) return false;
+    *lo = info->min;
+    *hi = info->max > info->min ? info->max : info->min + 1;
+    return true;
+}
+
+std::optional<Control> forParameters(const ParameterSource &source, quint64 scope, const QString &pathX, const QString &pathY, quint64 group)
+{
+    ParamInfo x, y;
+    double lo, hi;
+    if (!axis(source, scope, pathX, &x, &lo, &hi) || !axis(source, scope, pathY, &y, &lo, &hi)) return std::nullopt;
+    if (!(x.access & ParamInfo::Write) || !(y.access & ParamInfo::Write) || pathX == pathY) return std::nullopt;
+    Control c;
+    c.kind = Kind::Pad;
+    c.group = group;
+    c.name = x.name() + QStringLiteral(" / ") + y.name();
+    c.min = 0;
+    c.max = 1;
+    c.step = 0.001;
+    c.def = 0.5;
+    c.boundScope = scope;
+    c.boundParam = pathX;
+    c.boundParam2 = pathY;
+    fillBound(c, source);
+    return c;
+}
+
+bool setBoundPoint(const Control &c, ParameterSource &source, double x, double y)
+{
+    ParamInfo ix, iy;
+    double xlo, xhi, ylo, yhi;
+    if (c.kind != Kind::Pad || c.boundParam2.isEmpty() || !axis(source, c.boundScope, c.boundParam, &ix, &xlo, &xhi) ||
+        !axis(source, c.boundScope, c.boundParam2, &iy, &ylo, &yhi))
+        return false;
+    bool any = false;
+    if (std::isfinite(x) && (ix.access & ParamInfo::Write)) {
+        any |= source.setNumber(c.boundScope, c.boundParam, xlo + std::clamp(x, 0.0, 1.0) * (xhi - xlo));
+        source.touched(c.boundScope, c.boundParam);
+    }
+    if (std::isfinite(y) && (iy.access & ParamInfo::Write)) {
+        any |= source.setNumber(c.boundScope, c.boundParam2, ylo + std::clamp(y, 0.0, 1.0) * (yhi - ylo));
+        source.touched(c.boundScope, c.boundParam2);
+    }
+    return any;
+}
+
 void fillBound(Control &c, const ParameterSource &source)
 {
+    if (c.kind == Kind::Pad && !c.boundParam2.isEmpty()) {
+        ParamInfo ix, iy;
+        double xlo, xhi, ylo, yhi;
+        if (!axis(source, c.boundScope, c.boundParam, &ix, &xlo, &xhi) || !axis(source, c.boundScope, c.boundParam2, &iy, &ylo, &yhi)) return;
+        c.min = 0;
+        c.max = 1;
+        const QJsonValue vx = source.value(c.boundScope, c.boundParam), vy = source.value(c.boundScope, c.boundParam2);
+        if (vx.isDouble()) c.value = std::clamp((vx.toDouble() - xlo) / (xhi - xlo), 0.0, 1.0);
+        if (vy.isDouble()) c.value2 = std::clamp((vy.toDouble() - ylo) / (yhi - ylo), 0.0, 1.0);
+        return;
+    }
     if (c.kind == Kind::Color) {
         for (int k = 0; k < 3; ++k) {
             const QJsonValue v = source.value(c.boundScope, c.boundParam + QLatin1Char('/') + QLatin1Char("rgb"[k]));

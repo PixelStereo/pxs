@@ -33,7 +33,17 @@ public:
     bool startSearch() { return m_discovery.start(); }
 
     // A control that is a view of this parameter of this device (false: it has no such parameter, or not one a control can show)
-    quint64 addControl(quint64 deviceId, const QString &path, quint64 group = 0);
+    // `widget`: how the page draws it ("": the default one for its kind)
+    quint64 addControl(quint64 deviceId, const QString &path, const QString &widget = QString(), quint64 group = 0);
+    // A pad over two numeric parameters (X, Y)
+    quint64 addPad(quint64 deviceId, const QString &pathX, const QString &pathY, quint64 group = 0);
+    // The widgets a parameter can be shown with: {key, name}, the default first (empty: not a control)
+    QList<QPair<QString, QString>> widgetsFor(quint64 deviceId, const QString &path) const;
+
+    // The interface, to keep: the page's controls and the devices they show (by name: a device's address changes from one day to the next)
+    QJsonObject toJson() const;
+    bool fromJson(const QJsonObject &o, QString *error = nullptr); // replaces the page; its devices are opened
+    void clearControls();
 
     // The page: served to the network, with no code; this machine's own view uses the loopback
     bool serve();
