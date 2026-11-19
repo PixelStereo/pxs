@@ -157,7 +157,7 @@ inline constexpr char kScriptA[] = R"JS(
   const sv = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   let pin = new URLSearchParams(location.search).get('pin') || sessionStorage.getItem('nyxmap-pin') || '', needPin = true;
-  let busyAt = 0, ws = null, opened = false, failures = 0, controls = [], values = {}, byId = {}, pageId = -1, editing = false, busy = 0, again = false, sheetId = 0;
+  let busyAt = 0, ws = null, opened = false, failures = 0, controls = [], sizes = {}, values = {}, byId = {}, pageId = -1, editing = false, busy = 0, again = false, sheetId = 0;
   const active = new Set(), sendAt = {}, tiles = {};
   const state = (text, cls) => { const s = $('#state'); s.textContent = text; s.className = cls || ''; };
   const send = obj => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
@@ -224,7 +224,7 @@ inline constexpr char kScriptA[] = R"JS(
     ws.onmessage = e => {
       let m; try { m = JSON.parse(e.data); } catch (_) { return; }
       if (m.t === 'controls') {
-        controls = m.list || []; byId = {}; $('#title').textContent = m.title || 'Controls'; $('#toShow').hidden = !m.show;
+        controls = m.list || []; sizes = m.sizes || {}; byId = {}; $('#title').textContent = m.title || 'Controls'; $('#toShow').hidden = !m.show;
         controls.forEach(c => { byId[c.id] = c; values[c.id] = c.kind === 'color' ? c.rgb : c.kind === 'pad' ? [c.x, c.y] : c.kind === 'adsr' ? c.adsr : c.kind === 'multi' ? c.values : c.kind === 'points' ? [].concat.apply([], c.points) : c.value; });
         if (busy && Date.now() - busyAt < 4000) again = true; else { busy = 0; render(); } // a gesture that never ended must not freeze the page
       } else if (m.t === 'values') { Object.assign(values, m.v || {}); update(); }
@@ -431,7 +431,7 @@ inline constexpr char kScriptB2[] = R"JS(
 
 // C: pages, the grid, the tiles, Edit mode (drag, resize)
 inline constexpr char kScriptC[] = R"JS(
-  const sizeOf = c => { const w = widgetOf(c); return c.kind === 'group' ? [12, 1] : c.kind === 'pad' || c.kind === 'points' ? [5, 5] : c.kind === 'adsr' ? [6, 3] : c.kind === 'multi' ? (widgetOf(c) === 'hmulti' ? [6, 5] : [8, 4]) : c.kind === 'choice' ? [6, 2] : c.kind === 'slider' ? (w === 'meter' ? [1, 5] : w === 'hmeter' ? [4, 1] : w === 'graph' ? [4, 2] : w === 'readout' ? [3, 2] : w === 'knob' ? [3, 3] : w === 'vfader' ? [2, 5] : w === 'vslim' ? [1, 5] : w === 'number' ? [3, 2] : w === 'slim' ? [4, 2] : w === 'fader' ? [4, 2] : [2, 5]) : [3, 2]; };
+  const sizeOf = c => { const w = widgetOf(c), d = sizes[w]; if (d && c.kind !== 'group') return [d[0], d[1]]; return c.kind === 'group' ? [12, 1] : c.kind === 'pad' || c.kind === 'points' ? [5, 5] : c.kind === 'adsr' ? [6, 3] : c.kind === 'multi' ? (widgetOf(c) === 'hmulti' ? [6, 5] : [8, 4]) : c.kind === 'choice' ? [6, 2] : c.kind === 'slider' ? (w === 'meter' ? [1, 5] : w === 'hmeter' ? [4, 1] : w === 'graph' ? [4, 2] : w === 'readout' ? [3, 2] : w === 'knob' ? [3, 3] : w === 'vfader' ? [2, 5] : w === 'vslim' ? [1, 5] : w === 'number' ? [3, 2] : w === 'slim' ? [4, 2] : w === 'fader' ? [4, 2] : [2, 5]) : [3, 2]; };
   const minOf = c => isView(c) ? [1, 1] : c.kind === 'pad' ? [2, 2] : c.kind === 'slider' && widgetOf(c) === 'knob' ? [2, 2] : c.kind === 'slider' && (widgetOf(c) === 'vfader' || widgetOf(c) === 'vslim') ? [1, 3] : c.kind === 'group' ? [2, 1] : [2, 1];
   const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
   const topOf = c => { let p = c.group; while (p && byId[p] && byId[p].group) p = byId[p].group; return p || 0; };
