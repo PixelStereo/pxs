@@ -1,0 +1,139 @@
+// The OSCQuery client: the tree of a device, its values (polled: this server does not push), writes over OSC, discovery's packets,
+// and a control that is a view of a remote parameter.
+#include <pxs/Client.h>
+#include <pxs/Discovery.h>
+#include <pxs/MdnsResponder.h>
+#include <pxs/OscService.h>
+#include <pxs/RemoteSource.h>
+
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <cstdio>
+
+static int failures = 0;
+#define CHECK(condition) do { if (!(condition)) { std::fprintf(stderr, "FAILED %s:%d %s\n", __FILE__, __LINE__, #condition); ++failures; } } while (0)
+
+using namespace pxs;
+using namespace pxs::oscquery;
+
+static void pump(const std::function<bool()> &until, int ms = 3000)
+{
+    QElapsedTimer t;
+    t.start();
+    while (!until() && t.elapsed() < ms) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+}
+
+int main(int argc, char **argv)
+{
+    QCoreApplication app(argc, argv);
+
+    // The tree of a device
+    Tree tree;
+    double level = 0.25;
+    bool on = false;
+    int cue = -1;
+    auto p = std::make_unique<Parameter>("level", "Level", Parameter::Type::Float);
+    p->range(-6, 6).bind([&] { return QVariant(level); }, [&](const QVariant &v) { level = v.toDouble(); });
+    tree.add("/mix/level", std::move(p));
+    auto q = std::make_unique<Parameter>("on", "On", Parameter::Type::Bool);
+    q->bind([&] { return QVariant(on); }, [&](const QVariant &v) { on = v.toBool(); });
+    tree.add("/mix/on", std::move(q));
+    tree.addMessage("/show/go", "i", [&](const QVariantList &a) { cue = a.value(0).toInt(); return true; });
+    OscService service(&tree, "Fake");
+    CHECK(service.start(0, 0, false));
+
+    // RemoteTree reads what Tree says
+    RemoteTree remote;
+    CHECK(!remote.load(QJsonObject{{"nope", 1}}));
+    CHECK(remote.load(tree.json()));
+    const RemoteNode *level_ = remote.find("/mix/level");
+    CHECK(level_ && level_->type == "f" && level_->access == 3 && level_->value.at(0).toDouble() == 0.25);
+    ParamInfo info;
+    CHECK(level_->toParamInfo(&info) && info.type == ParamInfo::Type::Float && info.min == -6 && info.max == 6);
+    CHECK(remote.find("/mix/on")->toParamInfo(&info) && info.type == ParamInfo::Type::Bool);
+    CHECK(remote.find("/show/go")->toParamInfo(&info) && info.type == ParamInfo::Type::Int);
+    CHECK(!remote.find("/mix")->toParamInfo(&info) && !remote.find("/nowhere"));
+    CHECK(remote.leaves() == QStringList({"/mix/level", "/mix/on", "/show/go"}));
+
+    // The client: tree, polled values, writes
+    Client client;
+    bool ready = false;
+    QString failure;
+    QObject::connect(&client, &Client::ready, [&] { ready = true; });
+    QObject::connect(&client, &Client::failed, [&](const QString &r) { failure = r; });
+    client.open("127.0.0.1", service.httpPort());
+    pump([&] { return ready || !failure.isEmpty(); });
+    CHECK(ready && failure.isEmpty());
+    CHECK(client.name() == "Fake" && client.oscPort() == service.oscPort());
+    CHECK(client.tree().find("/mix/level") != nullptr);
+
+    QJsonArray heard;
+    QObject::connect(&client, &Client::valueChanged, [&](const QString &path, const QJsonArray &v) { if (path == "/mix/level") heard = v; });
+    client.listen("/mix/level");
+    pump([&] { return !heard.isEmpty(); });
+    CHECK(!heard.isEmpty() && heard.at(0).toDouble() == 0.25);
+    level = 1.5; // the device changes it itself
+    heard = QJsonArray();
+    pump([&] { return !heard.isEmpty(); });
+    CHECK(!heard.isEmpty() && heard.at(0).toDouble() == 1.5);
+
+    CHECK(client.write("/mix/level", QJsonArray{-2.0}));
+    pump([&] { return level == -2.0; });
+    CHECK(level == -2.0);
+    CHECK(client.write("/mix/on", QJsonArray{true}));
+    pump([&] { return on; });
+    CHECK(on);
+    CHECK(client.write("/show/go", QJsonArray{3}));
+    pump([&] { return cue == 3; });
+    CHECK(cue == 3);
+    CHECK(!client.write("/nowhere", QJsonArray{1}) && !client.write("/mix/level", QJsonArray{1, 2}));
+
+    // A control that is a view of the remote parameter
+    RemoteSource source(&client);
+    const auto view = controls::forParameter(source, 0, "/mix/level", 0);
+    CHECK(view && view->kind == controls::Control::Kind::Slider && view->min == -6 && view->max == 6 && view->boundParam == "/mix/level");
+    controls::Control c = *view;
+    CHECK(controls::setBound(c, source, 4.0));
+    pump([&] { return level == 4.0; });
+    CHECK(level == 4.0);
+    controls::fillBound(c, source);
+    CHECK(c.value == 4.0);
+    CHECK(controls::forParameter(source, 0, "/mix/on", 0)->kind == controls::Control::Kind::Toggle);
+
+    // An unreachable device fails, once
+    Client nobody;
+    QString why;
+    QObject::connect(&nobody, &Client::failed, [&](const QString &r) { why = r; });
+    nobody.open("127.0.0.1", 1);
+    pump([&] { return !why.isEmpty(); });
+    CHECK(!why.isEmpty() && nobody.state() == Client::State::Failed);
+
+    // OSC messages as a device's own arguments
+    RemoteNode node;
+    node.path = "/x";
+    node.type = "fT";
+    const osc::Message m = Client::toMessage(node, QJsonArray{0.5, 0});
+    CHECK(m.types == "fF" && m.args.size() == 2);
+    CHECK(Client::toJson(m) == QJsonArray({0.5, false}));
+
+    // Discovery reads an announcement, and a goodbye
+    Discovery discovery;
+    QList<Device> found, lost;
+    QObject::connect(&discovery, &Discovery::deviceFound, [&](const Device &d) { found << d; });
+    QObject::connect(&discovery, &Discovery::deviceLost, [&](const Device &d) { lost << d; });
+    const QByteArray hello = MdnsResponder::buildResponse("Fake (studio)", "studio", {{"_oscjson._tcp", 5678}}, {QHostAddress("192.168.1.20")}, 120);
+    discovery.handle(hello);
+    CHECK(found.size() == 1 && found[0].name == "Fake (studio)" && found[0].port == 5678 && found[0].address == QHostAddress("192.168.1.20"));
+    discovery.handle(hello);
+    CHECK(found.size() == 1); // the same again: nothing new
+    CHECK(discovery.devices().size() == 1);
+    discovery.handle(MdnsResponder::buildResponse("Fake (studio)", "studio", {{"_oscjson._tcp", 5678}}, {}, 0));
+    CHECK(lost.size() == 1 && discovery.devices().isEmpty());
+    CHECK(Discovery::parse(QByteArray(7, 'x')).isEmpty() && Discovery::parse(Discovery::query("_oscjson._tcp")).isEmpty());
+    QByteArray junk = hello;
+    for (int i = 12; i < junk.size(); i += 7) junk[i] = char(0xC0); // pointers into nowhere: refused, no hang
+    Discovery::parse(junk);
+
+    if (!failures) std::printf("oscclient: ok\n");
+    return failures ? 1 : 0;
+}
