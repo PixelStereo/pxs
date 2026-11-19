@@ -321,7 +321,7 @@ std::optional<Control> forPhysics(const Control &target, const QString &key)
     Control c;
     c.kind = Kind::Slider;
     c.group = target.group;
-    c.name = target.name + QLatin1Char(' ') + label;
+    c.name = label.left(1).toUpper() + label.mid(1); // the physics parameter only; a wire to its control shows in edit mode
     c.min = lo, c.max = hi, c.step = hi > 50 ? 1 : 0.01, c.def = *field, c.value = *field;
     c.physTarget = target.id;
     c.physKey = key;

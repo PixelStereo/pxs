@@ -27,6 +27,9 @@ header h1 { flex:1; margin:0 10px 0 0; font-size:16px; font-weight:600; white-sp
 #tabs button { font:inherit; font-size:14px; color:var(--dim); background:none; border:0; border-bottom:3px solid transparent; padding:8px 14px; white-space:nowrap; }
 #tabs button.on { color:var(--text); border-bottom-color:var(--acc); }
 #grid { position:relative; margin:10px; }
+#wires { position:absolute; left:0; top:0; width:100%; height:100%; overflow:visible; pointer-events:none; z-index:5; }
+.wire { stroke:var(--acc); stroke-width:1.5; stroke-dasharray:4 3; opacity:.8; }
+.wdot { fill:var(--acc); }
 .tile { position:absolute; transition:left .12s, top .12s, width .12s, height .12s; }
 .tile.moving { transition:none; z-index:4; }
 .face { position:absolute; left:4px; top:4px; right:4px; bottom:4px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:9px 12px 10px; display:flex; flex-direction:column; overflow:hidden; --a:var(--acc); }
@@ -456,16 +459,32 @@ inline constexpr char kScriptC[] = R"JS(
     t.el.style.left = (it.x * cell) + 'px'; t.el.style.top = (it.y * rowH) + 'px'; t.el.style.width = (it.w * cell) + 'px'; t.el.style.height = (it.h * rowH) + 'px';
     if (t.api && t.api.resize) t.api.resize();
   }
+  const leaf = n => n.split(' / ').map(s => s.split('/').pop() || s).join(' / '); // the node's name, not its path (an XY keeps both of its names)
+  // In edit mode, a thin wire from each physics widget to the control it sets
+  function wires() {
+    const old = $('#wires'); if (old) old.remove();
+    if (!editing || compact) return;
+    const svg = sv('svg', { id: 'wires' }, $('#grid')), box = it => ({ x: it.x * cell, y: it.y * rowH, w: it.w * cell, h: it.h * rowH });
+    items.forEach(a => {
+      const po = a.c.physicsOf, b = po && items.find(i => String(i.c.id) === String(po.id)); if (!b) return;
+      const r = box(a), q = box(b), p0 = [r.x + r.w / 2, r.y + r.h / 2], p1 = [q.x + q.w / 2, q.y + q.h / 2], dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+      const edge = (rc, c, sx, sy) => { const k = Math.min(rc.w / 2 / (Math.abs(sx) || 1e-9), rc.h / 2 / (Math.abs(sy) || 1e-9)); return [c[0] + sx * k, c[1] + sy * k]; };
+      const e0 = edge(r, p0, dx, dy), e1 = edge(q, p1, -dx, -dy);
+      sv('line', { x1: e0[0], y1: e0[1], x2: e1[0], y2: e1[1], class: 'wire' }, svg);
+      sv('circle', { cx: e0[0], cy: e0[1], r: 3, class: 'wdot' }, svg); sv('circle', { cx: e1[0], cy: e1[1], r: 3, class: 'wdot' }, svg);
+    });
+  }
   function placeAll() {
     geometry(); $('#grid').classList.toggle('compact', compact);
     const order = compact ? items.slice().sort((a, b) => a.y - b.y || a.x - b.x) : items;
     order.forEach(it => { if (compact) $('#grid').appendChild(tiles[it.c.id].el); place(it, tiles[it.c.id]); });
     if (!compact) $('#grid').style.height = (Math.max.apply(null, items.map(i => i.y + i.h).concat([1])) * rowH + (editing ? rowH * 2 : 0)) + 'px'; else $('#grid').style.height = '';
     $('#edit').hidden = false; $('#edit').style.display = compact ? 'none' : '';
+    wires();
   }
   function tile(it) {
     const c = it.c, t = { it, el: el('div', 'tile' + (c.kind === 'group' ? ' sec' : '')), api: null };
-    const face = el('div', 'face'), hd = el('div', 'hd'), name = el('span', '', c.name.split('/').pop() || c.name), val = el('b');
+    const face = el('div', 'face'), hd = el('div', 'hd'), name = el('span', '', leaf(c.name)), val = el('b');
     if (c.dest) name.title = c.dest; // only the node's name shows; the whole address is on hover
     face.style.setProperty('--a', c.accent || '');
     if (!c.accent) face.style.removeProperty('--a');
