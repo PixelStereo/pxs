@@ -242,11 +242,16 @@ int main(int argc, char **argv)
         phone.pumpUntil([&] { return near(fake.find(1)->value, 10); });
         phone.pumpUntil([&] { return near(fake.find(2)->points[0][0], 0.5); });
         require(near(fake.find(1)->value, 10) && near(fake.find(2)->points[1][0], 1) && near(fake.find(2)->points[1][1], 0), "a value and points set from the page, kept in range");
+        // Earlier changes (the ones just set from the page) may still be on their way: look for the one made now, whichever comes first
+        const auto sawFour = [&] {
+            for (const QJsonObject &m : phone.messages())
+                if (m.value("t").toString() == "values" && m.value("v").toObject().contains("1") && near(m.value("v").toObject().value("1").toDouble(), 4)) return true;
+            return false;
+        };
         phone.in.clear();
         fake.find(1)->value = 4;
-        phone.pumpUntil([&] { return !phone.messages().isEmpty(); });
-        require(!phone.messages().isEmpty() && phone.messages()[0].value("t").toString() == "values" &&
-                    near(phone.messages()[0].value("v").toObject().value("1").toDouble(), 4), "a value changed in the application reaches the page");
+        phone.pumpUntil(sawFour);
+        require(sawFour(), "a value changed in the application reaches the page");
         phone.in.clear();
         phone.pump(500);
         require(phone.messages().isEmpty(), "nothing changes, nothing is sent");
