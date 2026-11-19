@@ -105,11 +105,9 @@ int main(int argc, char **argv)
 
     // A page of another site is refused (a WebSocket writes); one of this machine is let in
     QWebSocket evil(QStringLiteral("http://evil.example"));
-    bool refused = false;
-    QObject::connect(&evil, &QWebSocket::errorOccurred, [&] { refused = true; });
     evil.open(url);
-    pump(app, [&] { return refused || evil.state() == QAbstractSocket::ConnectedState; });
-    CHECK(refused && evil.state() != QAbstractSocket::ConnectedState);
+    pump(app, [&] { return evil.state() == QAbstractSocket::ConnectedState; }, 1000); // refused: it never gets in
+    CHECK(evil.state() != QAbstractSocket::ConnectedState && service.query().webSocketCount() == 1);
     QWebSocket local(QStringLiteral("http://localhost:8080"));
     local.open(url);
     pump(app, [&] { return local.state() == QAbstractSocket::ConnectedState; });

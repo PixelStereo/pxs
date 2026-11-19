@@ -7,6 +7,7 @@
 #include <pxs/RemoteSource.h>
 
 #include <QCoreApplication>
+#include <QJsonDocument>
 #include <QElapsedTimer>
 #ifdef PXS_HAS_WEBSOCKETS
 #include <QWebSocket>
