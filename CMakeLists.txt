@@ -9,6 +9,7 @@ option(PXS_BUILD_TESTS "Build the pxs tests" ${PROJECT_IS_TOP_LEVEL})
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets Network)
+find_package(Qt6 6.4 QUIET COMPONENTS WebSockets)
 
 # OSC 1.0 codec: messages, bundles, address patterns. Qt Core only.
 add_library(pxs_osc STATIC src/osc/OscCodec.cpp src/osc/OscCodec.h)
@@ -68,11 +69,45 @@ set_target_properties(pxs_bind PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(pxs_bind PUBLIC src/bind)
 target_link_libraries(pxs_bind PUBLIC pxs::tree pxs::widgets)
 
+# Controls: the model of a control (kinds, JSON, its place on the page) and the page an application serves for them: a free grid,
+# pages for the groups, Edit mode, SVG widgets, and the server (HTTP and WebSocket) that gives a page its controls. Qt Core and Network.
+add_library(pxs_controls STATIC src/controls/Server.cpp src/controls/ControlList.cpp src/controls/pxs/ControlList.h src/controls/pxs/Server.h src/controls/pxs/Control.h src/controls/pxs/ControlsPage.h
+    src/controls/WebSocketFrame.h)
+add_library(pxs::controls ALIAS pxs_controls)
+set_target_properties(pxs_controls PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pxs_controls PUBLIC src/controls)
+target_link_libraries(pxs_controls PUBLIC pxs::params Qt6::Core Qt6::Network)
+
+# OSCQuery client: finds the devices of the network (mDNS), reads a device's tree, follows its values (WebSocket LISTEN when Qt WebSockets is
+# there, else polled), writes over OSC, and offers the device to the controls as a ParameterSource.
+add_library(pxs_oscclient STATIC src/oscclient/RemoteTree.cpp src/oscclient/Discovery.cpp src/oscclient/Client.cpp
+    src/oscclient/pxs/RemoteTree.h src/oscclient/pxs/Discovery.h src/oscclient/pxs/Client.h src/oscclient/pxs/RemoteSource.h)
+add_library(pxs::oscclient ALIAS pxs_oscclient)
+set_target_properties(pxs_oscclient PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pxs_oscclient PUBLIC src/oscclient)
+target_link_libraries(pxs_oscclient PUBLIC pxs::osc pxs::params pxs::controls pxs::oscquery Qt6::Core Qt6::Network)
+if(Qt6WebSockets_FOUND)
+    target_link_libraries(pxs_oscclient PUBLIC Qt6::WebSockets)
+    target_compile_definitions(pxs_oscclient PUBLIC PXS_HAS_WEBSOCKETS)
+endif()
+
 if(PXS_BUILD_TESTS)
     enable_testing()
     add_executable(pxs_osc_test test/osc_test.cpp)
     target_link_libraries(pxs_osc_test PRIVATE pxs::osc)
     add_test(NAME osc COMMAND pxs_osc_test)
+    add_executable(pxs_controls_test test/controls_test.cpp)
+    target_link_libraries(pxs_controls_test PRIVATE pxs::controls)
+    add_test(NAME controls COMMAND pxs_controls_test)
+    add_executable(pxs_control_list_test test/control_list_test.cpp)
+    target_link_libraries(pxs_control_list_test PRIVATE pxs::controls)
+    add_test(NAME control_list COMMAND pxs_control_list_test)
+    add_executable(pxs_oscclient_test test/oscclient_test.cpp)
+    target_link_libraries(pxs_oscclient_test PRIVATE pxs::oscclient pxs::tree)
+    add_test(NAME oscclient COMMAND pxs_oscclient_test)
+    add_executable(pxs_controls_server_test test/server_test.cpp)
+    target_link_libraries(pxs_controls_server_test PRIVATE pxs::controls)
+    add_test(NAME controls_server COMMAND pxs_controls_server_test)
     add_executable(pxs_params_test test/params_test.cpp)
     target_link_libraries(pxs_params_test PRIVATE pxs::params)
     add_test(NAME params COMMAND pxs_params_test)

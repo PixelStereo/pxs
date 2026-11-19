@@ -113,7 +113,7 @@ QueryServer::Response QueryServer::answer(const QString &method, const QByteArra
 
     QJsonObject json;
     if (query == QLatin1String("HOST_INFO")) {
-        json = Tree::hostInfo(m_name, m_oscPort, m_extensions);
+        json = Tree::hostInfo(m_name, m_oscPort, m_extensions, m_more);
     } else if (!query.isEmpty()) {
         if (!m_tree->attribute(path, query, json)) {
             resp.status = 404;
