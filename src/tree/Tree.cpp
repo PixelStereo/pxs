@@ -86,8 +86,10 @@ Node &Tree::add(const QString &path, std::unique_ptr<Parameter> parameter)
     Node &node = add(path);
     Parameter *p = parameter.get();
     node.m_parameter = std::move(parameter);
-    node.m_kind = p->info().type == ParamInfo::Type::Trigger ? Kind::Message : Kind::Parameter;
     const ParamInfo info = p->info();
+    // A parameter has a value that can be read. What nobody can read back (a trigger, a setter without getter) is a message.
+    const bool readable = info.type != ParamInfo::Type::Trigger && (info.access & ParamInfo::Read);
+    node.m_kind = readable ? Kind::Parameter : Kind::Action;
     node.label = info.name();
     if (info.type != ParamInfo::Type::Trigger && info.defaultValue.isValid()) node.reset = [p] { return p->reset(); };
     node.type = oscType(info);
@@ -98,7 +100,7 @@ Node &Tree::add(const QString &path, std::unique_ptr<Parameter> parameter)
         for (const QString &key : info.choices) vals.append(key);
         node.range = QJsonArray{QJsonObject{{"VALS", vals}}};
     }
-    if (info.type == ParamInfo::Type::Trigger) {
+    if (!readable) {
         node.get = nullptr;
     } else {
         node.get = [p] { return QVariantList{p->value()}; };
@@ -112,11 +114,11 @@ Node &Tree::add(const QString &path, std::unique_ptr<Parameter> parameter)
     return node;
 }
 
-Node &Tree::addMessage(const QString &path, const QString &type, std::function<bool(const QVariantList &)> handler,
+Node &Tree::addAction(const QString &path, const QString &type, std::function<bool(const QVariantList &)> handler,
                        const QString &description)
 {
     Node &node = add(path);
-    node.m_kind = Kind::Message;
+    node.m_kind = Kind::Action;
     if (node.label.isEmpty()) node.label = node.name();
     node.type = type.isEmpty() ? QStringLiteral("N") : type;
     node.access = 2;
@@ -309,8 +311,6 @@ QJsonObject Tree::json(const QString &path) const
     o["ACCESS"] = n->access;
     if (!n->description.isEmpty()) o["DESCRIPTION"] = n->description;
     if (n->locked) o["PXS_LOCKED"] = true;
-    if (n->m_kind == Kind::Message && !n->isContainer()) o["PXS_KIND"] = "message";
-    if (n->m_kind == Kind::Signal && !n->isContainer()) o["PXS_KIND"] = "signal";
     if (!n->type.isEmpty()) {
         o["TYPE"] = n->type;
         if ((n->access & 1) && n->get) {

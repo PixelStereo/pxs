@@ -13,8 +13,10 @@ static bool parse(const QJsonObject &o, const QString &name, RemoteNode *out, in
     out->type = o.value("TYPE").toString();
     out->description = o.value("DESCRIPTION").toString();
     out->resetPath = o.value("NYXMAP_RESET").toString();
-    out->kind = o.value("PXS_KIND").toString();
     out->access = std::clamp(o.value("ACCESS").toInt(0), 0, 3);
+    // A leaf with no value is not a parameter: one that is written is a message, one that is read is a signal
+    if (!o.contains("CONTENTS") && !o.contains("VALUE") && !out->type.isEmpty())
+        out->kind = out->access == 2 ? QStringLiteral("action") : out->access == 1 ? QStringLiteral("signal") : QString();
     out->range = o.value("RANGE").toArray();
     out->value = o.value("VALUE").toArray();
     const QJsonObject contents = o.value("CONTENTS").toObject();

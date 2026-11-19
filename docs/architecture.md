@@ -10,9 +10,9 @@ partout. Les points marqués **à valider** attendent une réponse.
 |---|---|---|
 | **Nœud** | un élément de l'arbre, avec un nom et un chemin (`/layer/1/opacity`) | `Node` |
 | **Branche** | un nœud qui en contient d'autres, sans valeur ni action | `Kind::Container` |
-| **Feuille** | un nœud qui ne contient rien et qui fait quelque chose | `Kind::Parameter`, `Message`, `Signal` |
+| **Feuille** | un nœud qui ne contient rien et qui fait quelque chose | `Kind::Parameter`, `Action`, `Signal` |
 | **Paramètre** | une feuille **avec un état** : on le lit, l'écrit, le sauvegarde ; il dit quand il change | `add(path, Parameter)`, ou rempli à la main |
-| **Message** (action) | une feuille **sans état** : on la reçoit, elle déclenche quelque chose | `addMessage` |
+| **Action** | une feuille **sans état** : on la reçoit, elle déclenche quelque chose | `addAction` |
 | **Signal** (contrôleur) | une feuille **sans état** : l'application l'émet, personne ne l'écrit ; on ne mémorise pas sa valeur | `addSignal`, `fire` |
 
 Une feuille n'a pas d'enfants : un nœud à qui on en donne devient une branche.
@@ -20,11 +20,11 @@ Un contrôleur matériel (MIDI, capteur, OSC entrant) est un **signal**.
 
 ## Le contrat : ce que chaque sorte de nœud fait, partout pareil
 
-| | Branche | Paramètre | Message | Signal |
+| | Branche | Paramètre | Action | Signal |
 |---|---|---|---|---|
 | **OSC reçu** | sans effet | écrit la valeur (dans ses limites) | exécute l'action | refusé |
 | **OSC émis** | – | le retour (`changed`) vers qui a écrit et vers les destinations | – | le flux (`fire`) vers les destinations seulement |
-| **OSCQuery** | `CONTENTS` | `TYPE`, `ACCESS` 1 à 3, `RANGE`, `VALUE` | `ACCESS` 2, `PXS_KIND: message`, pas de `VALUE` | `ACCESS` 1, `PXS_KIND: signal`, pas de `VALUE` |
+| **OSCQuery** | `CONTENTS` | `TYPE`, `ACCESS` 1 à 3, `RANGE`, `VALUE` | `ACCESS` 2, pas de `VALUE` | `ACCESS` 1, pas de `VALUE` |
 | **Sauvegardé** | non | oui, par adresse (`parametersToJson`) sauf `transient` | non | non |
 | **Réinitialiser** | – | oui, s'il a une valeur par défaut | – | – |
 | **Verrouiller** | – | oui : aucune écriture (OSC, mapping, interface) | oui | – |
@@ -34,7 +34,7 @@ Un contrôleur matériel (MIDI, capteur, OSC entrant) est un **signal**.
 | **Menu contextuel** | – | Réinitialiser · Copier l'adresse OSC · Verrouiller · Animer · Lier à un signal | Copier l'adresse OSC · Verrouiller | Copier l'adresse OSC |
 
 Le champ d'un paramètre vient de son type et de sa plage ; l'application ne le redessine pas.
-Les messages restent des boutons que **l'application place elle-même** ; il n'y a pas de menu d'actions automatique.
+Les actions restent des boutons que **l'application place elle-même** ; il n'y a pas de menu d'actions automatique.
 
 ## Mapping : l'Interaction de NyxMap, pour toutes les applications
 

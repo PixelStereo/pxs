@@ -42,7 +42,7 @@ int main(int argc, char **argv)
     auto q = std::make_unique<Parameter>("on", "On", Parameter::Type::Bool);
     q->bind([&] { return QVariant(on); }, [&](const QVariant &v) { on = v.toBool(); });
     tree.add("/mix/on", std::move(q));
-    tree.addMessage("/show/go", "i", [&](const QVariantList &a) { cue = a.value(0).toInt(); return true; });
+    tree.addAction("/show/go", "i", [&](const QVariantList &a) { cue = a.value(0).toInt(); return true; });
     OscService service(&tree, "Fake");
     CHECK(service.start(0, 0, false));
 

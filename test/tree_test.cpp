@@ -103,24 +103,29 @@ int main(int argc, char **argv)
     {
         pxs::Tree kinds;
         int received = 0;
-        kinds.addMessage("/show/go", "i", [&](const QVariantList &a) { received += a.value(0).toInt(); return true; }, "Go to a cue");
-        kinds.addMessage("/show/stop", "", [&](const QVariantList &) { ++received; return true; });
+        kinds.addAction("/show/go", "i", [&](const QVariantList &a) { received += a.value(0).toInt(); return true; }, "Go to a cue");
+        kinds.addAction("/show/stop", "", [&](const QVariantList &) { ++received; return true; });
         kinds.addSignal("/detect/peak", "f", "A peak was heard");
         auto level = make("/level", Parameter::Type::Float);
         double stored = 0;
         level->range(0, 1).bind([&] { return QVariant(stored); }, [&](const QVariant &v) { stored = v.toDouble(); });
         kinds.add("/level", std::move(level));
-        CHECK(kinds.find("/show/go")->kind() == pxs::Kind::Message && kinds.find("/detect/peak")->kind() == pxs::Kind::Signal);
+        CHECK(kinds.find("/show/go")->kind() == pxs::Kind::Action && kinds.find("/detect/peak")->kind() == pxs::Kind::Signal);
         CHECK(kinds.find("/level")->kind() == pxs::Kind::Parameter && kinds.find("/show")->kind() == pxs::Kind::Container);
         CHECK(kinds.apply({"/show/go", "i", {3}}) == 1 && received == 3);
         CHECK(kinds.apply({"/show/stop", "", {}}) == 1 && received == 4);
         CHECK(kinds.apply({"/detect/peak", "f", {1.0}}) == 0); // nobody writes a signal
         const QJsonObject go = kinds.json("/show/go");
-        CHECK(go["ACCESS"] == 2 && go["TYPE"] == "i" && go["PXS_KIND"] == "message" && !go.contains("VALUE"));
+        CHECK(go["ACCESS"] == 2 && go["TYPE"] == "i" && !go.contains("PXS_KIND") && !go.contains("VALUE"));
         CHECK(kinds.json("/show/stop")["TYPE"] == "N");
         const QJsonObject peak = kinds.json("/detect/peak");
-        CHECK(peak["ACCESS"] == 1 && peak["PXS_KIND"] == "signal" && !peak.contains("VALUE") && !peak.contains("CONTENTS"));
+        CHECK(peak["ACCESS"] == 1 && !peak.contains("PXS_KIND") && !peak.contains("VALUE") && !peak.contains("CONTENTS"));
         CHECK(!kinds.json("/level").contains("PXS_KIND"));
+        // A setter without getter has no value to read: it is a message, never a parameter
+        auto setter = make("/blackout", Parameter::Type::Float);
+        setter->writeOnly().bind(nullptr, [&](const QVariant &) {});
+        kinds.add("/blackout", std::move(setter));
+        CHECK(kinds.find("/blackout")->kind() == pxs::Kind::Action && kinds.json("/blackout")["ACCESS"] == 2 && !kinds.json("/blackout").contains("VALUE"));
         // Everything the application says goes to one output
         std::vector<osc::Message> out;
         kinds.setOutput([&](const osc::Message &m) { out.push_back(m); });
