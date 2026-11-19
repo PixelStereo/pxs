@@ -3,6 +3,7 @@
 
 #include <QJsonDocument>
 #include <QNetworkInterface>
+#include <QTimer>
 #include <QUrl>
 
 namespace pxs {
@@ -13,6 +14,8 @@ constexpr quint64 kMaxFrame = 1 << 20;          // a WebSocket frame from a clie
 constexpr int kMaxWebSockets = 32;
 constexpr qint64 kMaxBacklog = 1 << 20;         // what a WebSocket client may be behind before it misses a frame
 constexpr int kMaxListening = 4096;             // addresses one client listens to
+constexpr int kMaxConnections = 128;            // open connections, HTTP and WebSocket
+constexpr int kHeaderMs = 10000;                // a request that has not said what it wants by then is dropped
 
 QByteArray statusLine(int status)
 {
@@ -37,7 +40,7 @@ QueryServer::QueryServer(const Tree *tree, QObject *parent)
 bool QueryServer::start(quint16 port)
 {
     stop();
-    if (!m_server.listen(QHostAddress::Any, port)) {
+    if (!m_server.listen(m_bind, port)) {
         emit logMessage(QStringLiteral("OSCQuery: cannot listen on TCP port %1: %2").arg(port).arg(m_server.errorString()));
         return false;
     }
@@ -58,7 +61,16 @@ void QueryServer::stop()
 void QueryServer::onNewConnection()
 {
     while (QTcpSocket *socket = m_server.nextPendingConnection()) {
+        if (m_clients.size() >= kMaxConnections) { // a flood of connections must not take the application's memory
+            socket->abort();
+            socket->deleteLater();
+            continue;
+        }
         m_clients.insert(socket, Client());
+        QTimer::singleShot(kHeaderMs, socket, [this, socket] { // one that never finishes its request, or never sends it
+            const auto it = m_clients.constFind(socket);
+            if (it != m_clients.constEnd() && !it->websocket) socket->abort();
+        });
         connect(socket, &QTcpSocket::readyRead, this, [this, socket]() { onReadyRead(socket); });
         connect(socket, &QTcpSocket::disconnected, this, [this, socket]() {
             const bool was = m_clients.value(socket).websocket;
@@ -163,9 +175,8 @@ void QueryServer::onReadyRead(QTcpSocket *socket)
                 resp = answer(QString::fromLatin1(request[0]), request[1]);
             }
             QByteArray out = "HTTP/1.1 " + statusLine(resp.status) + "\r\n"
-                             "Access-Control-Allow-Origin: *\r\n"
-                             "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
                              "Connection: close\r\n";
+            if (m_cors) out += "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, OPTIONS\r\n";
             if (!resp.body.isEmpty()) out += "Content-Type: application/json; charset=utf-8\r\n";
             out += "Content-Length: " + QByteArray::number(resp.body.size()) + "\r\n\r\n";
             if (request.value(0) != "HEAD") out += resp.body;

@@ -87,6 +87,24 @@ written says `CLIPMODE: both`: its value is kept within its limits.
 A node name cannot hold a space or any of `# * , ? [ ] { }` (they would break the address patterns): each becomes `_`, in
 `add()` and in `find()`, so the same name finds the same node.
 
+## What else a node can say
+
+`EXTENDED_TYPE` (what each argument is: `color.rgb.r`, `position.cartesian.x`, `filepath`…) and `UNIT` (`distance.m`,
+`angle.degree`, `gain.db`…) follow the proposal's lists (`extended_types.md`, `units.md`); `TAGS` for a client to filter by;
+`DEFAULT_VALUE` (libossia's name) for what a reset puts back. A `Parameter` says them with `unit("gain.db")` and
+`extendedType("filepath")`; a color or a point component says what it is by itself (`colorComponent(0)` is `color.rgb.r`,
+`pointComponent(1)` is `position.cartesian.y`). A node filled in by hand has `extendedType`, `unit` (one per argument, `""`
+for none: it says `null`) and `tags`. libossia's client reads the unit, the default and the tags (tried). The client
+(`RemoteNode`) reads them too, and the proposal's shorthands: one value for every argument instead of an array, `null`
+for none.
+
+## Who can reach it
+
+`OscService::setLocalOnly(true)` for an application that is for this computer only: UDP and HTTP/WebSocket are bound to the
+loopback, nothing is announced on the network, and no page of another site may read the answers (no CORS header).
+Otherwise any interface answers, and a page of another site may read (`setCorsOpen(false)` to refuse that alone). At most
+128 connections; a request that has not said what it wants within 10 s is dropped.
+
 ## The WebSocket (the proposal's bi-directional side)
 
 `OscService` serves it on the HTTP port (`HOST_INFO` says `WS_PORT` and, in `EXTENSIONS`, `LISTEN` and `PATH_CHANGED`):

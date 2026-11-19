@@ -11,6 +11,7 @@
 #include <pxs/Tree.h>
 
 #include <QHash>
+#include <QHostAddress>
 #include <QObject>
 #include <QSet>
 #include <QTcpServer>
@@ -32,6 +33,10 @@ public:
     void setOscPort(quint16 port) { m_oscPort = port; }
     void setExtensions(const QJsonObject &extensions) { m_extensions = extensions; }
     void setHostInfoMore(const QJsonObject &more) { m_more = more; } // other HOST_INFO members (WS_PORT)
+    void setBindAddress(const QHostAddress &address) { m_bind = address; } // before start(): any interface (the default), or one
+    // Whether a web page of another site may read what this answers (Access-Control-Allow-Origin: *, on by default: a browser
+    // client of the proposal, oscqueryhtml, is such a page). Off: only a page served by this server, and native clients, read it.
+    void setCorsOpen(bool open) { m_cors = open; }
 
     // The HTTP answer to a request line target, public for tests
     struct Response {
@@ -71,6 +76,8 @@ private:
     quint16 m_oscPort = 0;
     QJsonObject m_extensions = Tree::defaultExtensions();
     QJsonObject m_more;
+    QHostAddress m_bind = QHostAddress::Any;
+    bool m_cors = true;
 };
 
 } // namespace pxs

@@ -24,7 +24,11 @@ OscService::~OscService() { stop(); }
 bool OscService::start(quint16 oscPort, quint16 httpPort, bool announce)
 {
     stop();
-    if (!m_udp.bind(QHostAddress::Any, oscPort, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
+    const QHostAddress where = m_localOnly ? QHostAddress(QHostAddress::LocalHost) : QHostAddress(QHostAddress::Any);
+    m_http.setBindAddress(where);
+    m_http.setCorsOpen(!m_localOnly);
+    if (m_localOnly) announce = false;
+    if (!m_udp.bind(where, oscPort, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
         emit logMessage(QStringLiteral("OSC: cannot listen on UDP port %1: %2").arg(oscPort).arg(m_udp.errorString()));
         return false;
     }

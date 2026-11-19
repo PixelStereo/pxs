@@ -115,6 +115,13 @@ Node &Tree::add(const QString &path, std::unique_ptr<Parameter> parameter)
         node.range = QJsonArray{QJsonObject{{"MIN", info.min}, {"MAX", info.max}}};
         if (info.access & ParamInfo::Write) node.clip = QStringLiteral("both"); // a write is kept within the limits
     }
+    // What it is: said, or its place among the components of a color or a point
+    QString extended = info.extendedType;
+    if (extended.isEmpty() && info.colorComponent >= 0 && info.colorComponent < 4) extended = QStringLiteral("color.rgb.") + QChar("rgba"[info.colorComponent]);
+    if (extended.isEmpty() && info.pointComponent >= 0 && info.pointComponent < 2) extended = QStringLiteral("position.cartesian.") + QChar("xy"[info.pointComponent]);
+    if (!extended.isEmpty()) node.extendedType = QStringList{extended};
+    if (!info.unit.isEmpty()) node.unit = QStringList{info.unit};
+    if (readable && info.defaultValue.isValid()) node.defaultValue = [p] { return QVariantList{p->info().defaultValue}; };
     if (info.type == ParamInfo::Type::Choice) {
         QJsonArray vals;
         for (const QString &key : info.choices) vals.append(key);
@@ -325,6 +332,15 @@ osc::Message Tree::message(const Node &node)
 }
 
 namespace {
+// The arguments of a type tag string: its letters, the brackets of an array not counted
+int scalarCount(const QString &type)
+{
+    int n = 0;
+    for (QChar t : type)
+        if (t != '[' && t != ']') ++n;
+    return n;
+}
+
 // One OSC argument as OSCQuery writes it (the table of the proposal): numbers, strings, a colour as #RRGGBBAA, a switch as
 // a boolean, nothing for what has no value (N I) or no description (blob, MIDI)
 QJsonValue scalar(QChar t, const QVariant &v)
@@ -391,6 +407,24 @@ QJsonObject Tree::describe(const Node &node, bool contents) const
             o["CLIPMODE"] = c;
         }
     }
+    if (!n->type.isEmpty()) {
+        const int arguments = scalarCount(n->type);
+        const auto perArgument = [&](const QStringList &names) {
+            QJsonArray a;
+            for (int k = 0; k < arguments; ++k) a.append(names.value(k).isEmpty() ? QJsonValue() : QJsonValue(names.value(k)));
+            return a;
+        };
+        if (!n->extendedType.isEmpty()) o["EXTENDED_TYPE"] = perArgument(n->extendedType);
+        if (!n->unit.isEmpty()) o["UNIT"] = perArgument(n->unit);
+        if (n->defaultValue) {
+            const QVariantList d = n->defaultValue();
+            if (!d.isEmpty()) {
+                int at = 0, used = 0;
+                o["DEFAULT_VALUE"] = valuesOf(n->type, d, at, used, false);
+            }
+        }
+    }
+    if (!n->tags.isEmpty()) o["TAGS"] = QJsonArray::fromStringList(n->tags);
     for (const auto &entry : n->attributes) {
         const QJsonValue v = entry.second();
         if (!v.isNull() && !v.isUndefined()) o[entry.first] = v;
@@ -416,7 +450,8 @@ bool Tree::attribute(const QString &path, const QString &name, QJsonObject &out)
 
 QJsonObject Tree::defaultExtensions()
 {
-    return QJsonObject{{"ACCESS", true}, {"VALUE", true}, {"RANGE", true}, {"DESCRIPTION", true}, {"CLIPMODE", true}, {"PXS_LOCKED", true}};
+    return QJsonObject{{"ACCESS", true}, {"VALUE", true}, {"RANGE", true}, {"DESCRIPTION", true}, {"CLIPMODE", true}, {"PXS_LOCKED", true},
+                       {"TAGS", true}, {"EXTENDED_TYPE", true}, {"UNIT", true}, {"DEFAULT_VALUE", true}};
 }
 
 QJsonObject Tree::hostInfo(const QString &name, int oscPort, const QJsonObject &extensions, const QJsonObject &more)

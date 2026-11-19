@@ -77,6 +77,26 @@ int main(int argc, char **argv)
     pump(app, [&] { return heard.size() >= 2; });
     CHECK(heard.size() == 2 && heard[1].address == "/detect/peak");
 
+    // CORS: a page of another site may read the answers, unless the application is for this computer only
+    const auto rawGet = [&](quint16 port) {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, port);
+        QByteArray reply;
+        QObject::connect(&socket, &QTcpSocket::connected, [&] { socket.write("GET /?HOST_INFO HTTP/1.1\r\nHost: x\r\n\r\n"); });
+        QObject::connect(&socket, &QTcpSocket::readyRead, [&] { reply += socket.readAll(); });
+        pump(app, [&] { return reply.contains("}"); });
+        return reply;
+    };
+    CHECK(rawGet(service.httpPort()).contains("Access-Control-Allow-Origin: *"));
+    {
+        Tree quiet;
+        OscService local(&quiet, "Local");
+        local.setLocalOnly(true);
+        CHECK(local.start(0, 0));
+        const QByteArray reply = rawGet(local.httpPort());
+        CHECK(reply.contains("200 OK") && !reply.contains("Access-Control-Allow-Origin"));
+    }
+
     service.stop();
     CHECK(!service.isRunning());
     return failures ? 1 : 0;

@@ -57,6 +57,17 @@ int main(int argc, char **argv)
                                        {"CONTENTS", QJsonObject{{"reset", QJsonObject{{"FULL_PATH", "/a/reset"}, {"TYPE", "N"}, {"ACCESS", 2}}}}}}}}}};
         CHECK(withReset.load(doc) && withReset.find("/a") && withReset.find("/a")->resetPath == "/a/reset" && withReset.find("/a/reset"));
     }
+    { // what the proposal lets a device write: one value for every argument, a null for "none", units and what an argument is
+        pxs::oscquery::RemoteTree shorthand;
+        const QJsonObject doc{{"FULL_PATH", "/"}, {"CONTENTS", QJsonObject{{"p", QJsonObject{{"FULL_PATH", "/p"}, {"TYPE", "ff"}, {"ACCESS", 3},
+                              {"RANGE", QJsonObject{{"MIN", 0}, {"MAX", 1}}}, {"UNIT", "distance.m"}, {"VALUE", QJsonArray{0.5, 0.25}},
+                              {"EXTENDED_TYPE", QJsonArray{"position.cartesian.x", QJsonValue()}}, {"TAGS", QJsonArray{"a"}},
+                              {"DEFAULT_VALUE", QJsonArray{0.5, 0.5}}}}}}};
+        CHECK(shorthand.load(doc));
+        const RemoteNode *p = shorthand.find("/p");
+        CHECK(p && p->range.size() == 2 && p->range.at(1).toObject().value("MAX").toInt() == 1 && p->unit == QStringList({"distance.m", "distance.m"}));
+        CHECK(p->extendedType == QStringList({"position.cartesian.x", ""}) && p->tags == QStringList{"a"} && p->defaultValue.size() == 2);
+    }
     const RemoteNode *level_ = remote.find("/mix/level");
     CHECK(level_ && level_->type == "f" && level_->access == 3 && level_->value.at(0).toDouble() == 0.25);
     ParamInfo info;
@@ -207,6 +218,10 @@ int main(int argc, char **argv)
     QList<Device> found, lost;
     QObject::connect(&discovery, &Discovery::deviceFound, [&](const Device &d) { found << d; });
     QObject::connect(&discovery, &Discovery::deviceLost, [&](const Device &d) { lost << d; });
+    { // an instance name with dots stays one label (it is not a domain name), and the host is not the operating system's own
+        const QByteArray dotted = MdnsResponder::buildResponse("My.App 1.2", "studio", {{"_oscjson._tcp", 5678}}, {}, 120);
+        CHECK(dotted.contains(QByteArray("\x0aMy.App 1.2\x08_oscjson", 19)));
+    }
     const QByteArray hello = MdnsResponder::buildResponse("Fake (studio)", "studio", {{"_oscjson._tcp", 5678}}, {QHostAddress("192.168.1.20")}, 120);
     discovery.handle(hello);
     CHECK(found.size() == 1 && found[0].name == "Fake (studio)" && found[0].port == 5678 && found[0].address == QHostAddress("192.168.1.20"));
