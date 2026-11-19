@@ -19,7 +19,6 @@ namespace pxs::controls {
 namespace {
 constexpr int kMaxClients = 16;
 constexpr int kMaxHeader = 16384;
-constexpr quint64 kMaxFrame = 4096;
 constexpr int kMaxFailures = 8;
 constexpr qint64 kLockMs = 60'000;
 
@@ -316,7 +315,7 @@ void Server::onData(QTcpSocket *s)
     while (c.websocket) {
         int opcode = 0;
         QByteArray payload;
-        const int got = websocket::decode(c.buffer, &opcode, &payload, kMaxFrame);
+        const int got = websocket::decode(c.buffer, &opcode, &payload, m_maxFrame);
         if (got == 0) return;
         if (got < 0) {
             s->abort();
