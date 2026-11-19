@@ -237,6 +237,8 @@ inline constexpr char kScriptB[] = R"JS(
   const wChoices = { slider: ['fader', 'vfader', 'knob', 'number', 'slim', 'vslim', 'meter', 'hmeter', 'readout', 'graph'], toggle: ['switch', 'led'], choice: ['buttons', 'menu', 'readout'], button: ['hold', 'tap'], color: ['picker'], pad: ['pad'], adsr: ['adsr'], multi: ['multi', 'hmulti'], points: ['pad'] };
   const wName = { fader: 'Fader', vfader: 'Vertical fader', slim: 'Slim fader', vslim: 'Slim vertical fader', knob: 'Encoder', number: 'Number', switch: 'Switch', buttons: 'Buttons', menu: 'Menu', hold: 'Hold button', tap: 'Tap button', picker: 'Color', pad: 'XY pad', adsr: 'ADSR', multi: 'Multi-slider', hmulti: 'Horizontal multi-slider', meter: 'Meter', hmeter: 'Horizontal meter', readout: 'Readout', graph: 'Graph', led: 'LED' };
   const isView = c => ['meter', 'hmeter', 'readout', 'graph', 'led'].indexOf(widgetOf(c)) >= 0; // a view: it shows the value, it does not set it
+  // A control with a physics shows where the physics has put it, not where the hand is: the hand sets where it should go
+  const physOf = c => !!(c.physics && c.physics.mode > 0) || !!(c.balls && c.balls.some(b => b.physics && b.physics.mode > 0));
   const widgetOf = c => (wChoices[c.kind] || []).indexOf(c.widget) >= 0 ? c.widget : wDefault[c.kind];
   // The big one, as TouchOSC and Lemur have it: the whole tile is the fader, a finger anywhere puts the level there, and the level is
   // the filled part, ended by a bright edge. Nothing small to catch
@@ -244,21 +246,23 @@ inline constexpr char kScriptB[] = R"JS(
     const root = el('div', 'slab' + (vertical ? ' v' : '')), fill = el('div', 'sfill'), edge = el('div', 'sedge');
     root.appendChild(fill); root.appendChild(edge);
     let pos = 0, down = false;
+    const ph = physOf(c);
     const draw = () => { const p = (pos * 100) + '%'; if (vertical) { fill.style.height = p; edge.style.bottom = 'calc(' + p + ' - 2px)'; } else { fill.style.width = p; edge.style.left = 'calc(' + p + ' - 2px)'; } };
     const at = p => { const r = root.getBoundingClientRect(); return clamp(vertical ? 1 - (p.y - r.top) / r.height : (p.x - r.left) / r.width, 0, 1); };
-    const move = p => { pos = at(p); draw(); io.input(fromPos(c, pos)); };
+    const move = p => { pos = at(p); if (!ph) draw(); io.input(fromPos(c, pos)); };
     press(root, { down: p => { down = true; io.begin(); move(p); }, move, up: p => { move(p); down = false; io.end(); } });
-    return { el: root, set: v => { if (!down) { pos = toPos(c, v); draw(); } } };
+    return { el: root, set: v => { if (!down || ph) { pos = toPos(c, v); draw(); } } };
   }
   function fader(c, io, vertical) {
     const root = el('div', 'fader' + (vertical ? ' v' : '')), trk = el('div', 'trk'), fill = el('div', 'fill'), cap = el('div', 'cap');
     trk.appendChild(fill); trk.appendChild(cap); root.appendChild(trk);
     let pos = 0, down = false;
+    const ph = physOf(c);
     const draw = () => { const p = (pos * 100) + '%'; if (vertical) { fill.style.height = p; cap.style.bottom = p; } else { fill.style.width = p; cap.style.left = p; } };
     const at = p => { const r = trk.getBoundingClientRect(); return clamp(vertical ? 1 - (p.y - r.top) / r.height : (p.x - r.left) / r.width, 0, 1); };
-    const move = p => { pos = at(p); draw(); io.input(fromPos(c, pos)); };
+    const move = p => { pos = at(p); if (!ph) draw(); io.input(fromPos(c, pos)); };
     press(root, { down: p => { down = true; io.begin(); move(p); }, move, up: p => { move(p); down = false; io.end(); } });
-    return { el: root, set: v => { if (!down) { pos = toPos(c, v); draw(); } } };
+    return { el: root, set: v => { if (!down || ph) { pos = toPos(c, v); draw(); } } };
   }
   function knob(c, io) {
     const root = el('div', 'knob'), s = sv('svg', { viewBox: '0 0 100 100' }, root), R = 38;
@@ -267,10 +271,11 @@ inline constexpr char kScriptB[] = R"JS(
     sv('path', { d: arc(135, 405), 'class': 'kbg' }, s);
     const val = sv('path', { 'class': 'kval' }, s), dot = sv('line', { 'class': 'kdot' }, s), tx = sv('text', { 'class': 'ktx', x: 50, y: 56 }, s);
     let pos = 0, down = false, y0 = 0, p0 = 0;
+    const ph = physOf(c);
     const draw = v => { const a = 135 + 270 * pos, e = pt(a), i = [50 + 22 * Math.cos(a * Math.PI / 180), 50 + 22 * Math.sin(a * Math.PI / 180)];
       val.setAttribute('d', pos > 0.004 ? arc(135, a) : ''); dot.setAttribute('x1', i[0]); dot.setAttribute('y1', i[1]); dot.setAttribute('x2', e[0]); dot.setAttribute('y2', e[1]); tx.textContent = fmt(c, v); };
-    press(root, { down: p => { down = true; y0 = p.y; p0 = pos; io.begin(); }, move: p => { pos = clamp(p0 + (y0 - p.y) / (p.e && p.e.shiftKey ? 600 : 170), 0, 1); const v = fromPos(c, pos); draw(v); io.input(v); }, up: () => { down = false; io.end(); } });
-    return { el: root, set: v => { if (!down) { pos = toPos(c, v); draw(v); } } };
+    press(root, { down: p => { down = true; y0 = p.y; p0 = pos; io.begin(); }, move: p => { pos = clamp(p0 + (y0 - p.y) / (p.e && p.e.shiftKey ? 600 : 170), 0, 1); const v = fromPos(c, pos); if (!ph) draw(v); io.input(v); }, up: () => { down = false; io.end(); } });
+    return { el: root, set: v => { if (!down || ph) { pos = toPos(c, v); draw(v); } } };
   }
   function number(c, io) {
     const root = el('div', 'num'), m = el('button', '', '−'), p = el('button', '', '+'), out = el('output');
@@ -309,10 +314,10 @@ inline constexpr char kScriptB[] = R"JS(
       const pad = el('div', 'pad'), dot = el('i'); pad.appendChild(dot);
       const span = c.max - c.min, draw = v => { dot.style.left = ((v[0] - c.min) / span * 100) + '%'; dot.style.top = ((1 - (v[1] - c.min) / span) * 100) + '%'; };
       const at = p => { const r = pad.getBoundingClientRect(); return [c.min + clamp((p.x - r.left) / r.width, 0, 1) * span, c.min + clamp(1 - (p.y - r.top) / r.height, 0, 1) * span]; };
-      const move = p => { const v = at(p); values[c.id] = v; draw(v); throttled(c.id, () => send({ t: 'point', id: c.id, xy: v })); };
+      const ph = physOf(c), move = p => { const v = at(p); values[c.id] = v; if (!ph) draw(v); throttled(c.id, () => send({ t: 'point', id: c.id, xy: v })); };
       let down = false;
       press(pad, { down: p => { down = true; active.add(c.id); move(p); }, move, up: p => { down = false; active.delete(c.id); send({ t: 'point', id: c.id, xy: at(p) }); send({ t: 'rel', id: c.id }); } });
-      return { el: pad, set: v => { if (!down) draw(v); } };
+      return { el: pad, set: v => { if (!down || ph) draw(v); } };
     }
     if (c.kind === 'adsr') return adsr(c, io);
     if (c.kind === 'multi') return multi(c, io, w === 'hmulti');
@@ -373,6 +378,7 @@ inline constexpr char kScriptB2[] = R"JS(
   function multi(c, io, horizontal) {
     const root = el('div', 'multi' + (horizontal ? ' h' : '')), n = c.count, span = (c.max - c.min) || 1, bars = [];
     let v = (c.values || []).slice(), down = false, last = -1, lastF = 0;
+    const ph = physOf(c);
     while (v.length < n) v.push(c.min);
     for (let i = 0; i < n; i++) { const b = el('div', 'mb'), f = el('div', 'mf'), e = el('div', 'me'); b.appendChild(f); b.appendChild(e); root.appendChild(b); bars.push({ f, e }); }
     const draw = () => bars.forEach((b, i) => { const p = (clamp((v[i] - c.min) / span, 0, 1) * 100) + '%';
@@ -383,11 +389,12 @@ inline constexpr char kScriptB2[] = R"JS(
       const i = clamp(Math.floor((horizontal ? (p.y - r.top) / r.height : (p.x - r.left) / r.width) * n), 0, n - 1);
       const f = clamp(horizontal ? (p.x - r.left) / r.width : 1 - (p.y - r.top) / r.height, 0, 1);
       const from = last < 0 ? i : last, lo = Math.min(from, i), hi = Math.max(from, i); // a fast swipe crosses bars between two samples
-      for (let k = lo; k <= hi; k++) v[k] = snap(hi === lo ? f : lastF + (f - lastF) * ((k - from) / (i - from || 1)));
-      last = i; lastF = f; draw(); io.input(v.slice());
+      const w = ph ? v.slice() : v;
+      for (let k = lo; k <= hi; k++) w[k] = snap(hi === lo ? f : lastF + (f - lastF) * ((k - from) / (i - from || 1)));
+      last = i; lastF = f; if (!ph) draw(); io.input(w.slice());
     };
     press(root, { down: p => { down = true; last = -1; io.begin(); put(p); }, move: put, up: p => { put(p); down = false; io.end(); } });
-    return { el: root, resize: draw, set: x => { if (!down) { v = x.slice(); while (v.length < n) v.push(c.min); draw(); } } };
+    return { el: root, resize: draw, set: x => { if (!down || ph) { v = x.slice(); while (v.length < n) v.push(c.min); draw(); } } };
   }
   // An envelope in the hand: attack, decay, sustain and release, each by its own handle (the times along four slots, the sustain up and down)
   function adsr(c, io) {
@@ -505,7 +512,7 @@ inline constexpr char kScriptC[] = R"JS(
   function update() {
     for (const id in tiles) {
       const t = tiles[id], c = t.it.c;
-      if (!t.api || active.has(c.id)) continue;
+      if (!t.api || (active.has(c.id) && !physOf(c))) continue;
       const v = values[c.id]; t.api.set(v);
       if (t.val) t.val.textContent = fmt(c, v);
     }
@@ -552,8 +559,8 @@ inline constexpr char kScriptD[] = R"JS(
       r.oninput = () => { p[key] = Number(to(Number(r.value) / 1000).toFixed(3)); say(); save(Object.assign({}, p)); }; say(); box.appendChild(r); box.appendChild(h); };
     const build = () => { box.textContent = '';
       if (p.mode === 1) knob('Speed', 'rate', 0.5, 60, true);
-      if (p.mode === 2) { knob('Tension (the spring to the hand)', 'tension', 0, 400, true); knob('Friction', 'friction', 0, 30, true); knob('Attraction to the rest place', 'attract', 0, 200, true);
-        knob('Wall bounce', 'wall', 0, 1, false); knob('Rest place X', 'restX', 0, 1, false); knob('Rest place Y', 'restY', 0, 1, false); } };
+      if (p.mode === 2) { knob('Tension (the spring to the hand)', 'tension', 0, 400, true); knob('Friction', 'friction', 0, 30, true); knob('Attraction to where the hand was', 'attract', 0, 200, true);
+        knob('Wall bounce', 'wall', 0, 1, false); } };
     mode.onchange = () => { p.mode = Number(mode.value); build(); save(Object.assign({}, p)); }; build();
   }
   // A pad of balls: a menu of the balls with + and -, and the range, addresses, color and physics of the chosen one

@@ -63,7 +63,7 @@ int main()
         t.kind = Control::Kind::Toggle;
         check(p.numberSources().size() == 6 && s.numberSources().size() == 1 && t.numberSources().empty(), "a control says which numbers it offers");
     }
-    // Physics, as Lemur has it: mass-spring goes on after the hand, comes back to its rest place, bounces; interpolate glides; it is all kept in JSON
+    // Physics, as Lemur has it: mass-spring goes on after the hand, is pulled to where the hand was, bounces; interpolate glides; it is all kept in JSON
     {
         namespace ph = pxs::controls::physics;
         Control c;
@@ -80,11 +80,11 @@ int main()
         b.pos = {0.99}, b.vel = {1.0}, b.held = false;
         ph::step(c, b, 0.016), ph::step(c, b, 0.016);
         check(b.pos[0] <= 1 && b.vel[0] < 0, "it bounces on the wall");
-        c.physics.friction = 6, c.physics.attract = 40, c.physics.restX = 0.5;
-        b.pos = {0.0}, b.vel = {0.0}, b.held = false;
+        c.physics.friction = 6, c.physics.attract = 40;
+        b.pos = {0.0}, b.vel = {0.0}, b.target = {0.5}, b.held = false;
         steps = 0;
         while (ph::step(c, b, 0.016) && steps < 5000) ++steps;
-        check(steps < 5000 && near(b.pos[0], 0.5, 1e-3), "the attraction brings it back to its rest place");
+        check(steps < 5000 && near(b.pos[0], 0.5, 1e-3), "the attraction brings it to where the hand last was");
         c.physics.tension = 200, c.physics.friction = 20;
         b.pos = {0.0}, b.vel = {0.0}, b.target = {0.8}, b.held = true;
         steps = 0;
@@ -95,7 +95,7 @@ int main()
         ph::step(c, b, 0.1);
         check(b.pos[0] > 0.5 && b.pos[0] < 1, "interpolate glides to the hand");
         c.physics.mode = pxs::controls::Physics::MassSpring;
-        c.physics = {2, 7, 90, 12, 0.25, 9, 0.2, 0.8};
+        c.physics = {2, 7, 90, 12, 0.25, 9};
         const Control again = Control::fromJson(c.toJson());
         check(again.physics == c.physics, "its physics goes through JSON");
         Control t;

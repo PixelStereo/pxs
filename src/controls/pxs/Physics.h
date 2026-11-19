@@ -1,7 +1,7 @@
 #pragma once
 // The physics of a control's numbers (Control::physics, a Points control's balls each have theirs), as Lemur has it: one body per number, in
 // the 0..1 of its range, that goes toward where the hand is (Interpolate) or is held to it by a spring and goes on by itself when the hand
-// lets go (Mass-Spring: friction, the pull to a rest place, the bounce on the walls). Pure: Server.h steps it every 16 ms.
+// lets go (Mass-Spring: friction, the pull to where the hand last was, the bounce on the walls). Pure: Server.h steps it every 16 ms.
 #include "Control.h"
 
 #include <QtGlobal>
@@ -31,12 +31,6 @@ inline void rangeOf(const Control &c, size_t i, double *lo, double *hi)
     }
 }
 inline const Physics &of(const Control &c, size_t i) { return c.kind == Control::Kind::Points ? c.physicsOf(i / 2) : c.physics; }
-inline double restOf(const Control &c, size_t i)
-{
-    const Physics &p = of(c, i);
-    return (c.kind == Control::Kind::Points || c.kind == Control::Kind::Pad) && i % 2 == 1 ? p.restY : p.restX;
-}
-
 inline std::vector<double> toUnits(const Control &c, const std::vector<double> &numbers)
 {
     std::vector<double> out(numbers.size());
@@ -78,15 +72,14 @@ inline bool step(const Control &c, Body &b, double dt)
             if (std::abs(t - u) < 5e-4) u = t;
             else moving = true;
         } else {
-            const double rest = restOf(c, i);
-            const double force = b.held ? p.tension * (t - u) : p.attract * (rest - u);
+            const double force = b.held ? p.tension * (t - u) : p.attract * (t - u); // the hand, held or gone: its last place
             v += force * dt;
             v *= std::exp(-p.friction * dt);
             u += v * dt;
             if (u < 0) { u = 0; v = -v * p.wall; }
             if (u > 1) { u = 1; v = -v * p.wall; }
-            const double goal = b.held ? t : (p.attract > 0 ? rest : u);
-            if (std::abs(v) > 2e-3 || std::abs(goal - u) > 5e-4 * (p.attract > 0 || b.held ? 1 : 1e9)) moving = true;
+            const bool pulled = b.held || p.attract > 0;
+            if (std::abs(v) > 2e-3 || (pulled && std::abs(t - u) > 5e-4)) moving = true;
             else v = 0;
         }
     }
