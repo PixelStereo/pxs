@@ -9,10 +9,11 @@
 //
 // Three kinds of leaf, the same in every application (a container holds them):
 //   parameter  has a state: it is read, written, saved, and tells when it changes (a Parameter, or filled by hand)
-//   message    has no state: it is received and does something (an action, a trigger, with or without arguments)
+//   action     has no state: it is received and does something (an action, a trigger, with or without arguments)
 //   signal     has no state: the application emits it (a detection, a button pressed, a meter), nobody writes it
-// OSCQuery says them with ACCESS (3 or 1 or 2 for a parameter, 2 for a message, 1 for a signal) and, for a message or a
-// signal, the extension PXS_KIND ("message", "signal"); neither has a VALUE.
+// OSCQuery says them with ACCESS and VALUE only, no extension: a parameter always has a VALUE that can be read (ACCESS 1 or
+// 3); an action has ACCESS 2 and no VALUE; a signal has ACCESS 1 and no VALUE. So what nobody can read back is never a
+// parameter: a setter without getter is declared as an action.
 //
 // The idea comes from Ossia's device tree. What was left out on purpose: bounding modes, units, repetition filters,
 // tags, a callback list on every node. A write already tells the others through ChangeFeed.
@@ -34,7 +35,7 @@ namespace pxs {
 
 class Tree;
 
-enum class Kind { Container, Parameter, Message, Signal };
+enum class Kind { Container, Parameter, Action, Signal };
 
 class Node {
 public:
@@ -84,9 +85,9 @@ public:
     // The same, declared through a Parameter, which the tree owns: type, access, range, choices and the way to read and
     // write the value come from it
     Node &add(const QString &path, std::unique_ptr<Parameter> parameter);
-    // A message: received, no state. `type` is the OSC type tags of its arguments ("N" when it takes none); the handler
+    // An action: received, no state. `type` is the OSC type tags of its arguments ("N" when it takes none); the handler
     // gets the arguments and returns false to refuse them.
-    Node &addMessage(const QString &path, const QString &type, std::function<bool(const QVariantList &)> handler,
+    Node &addAction(const QString &path, const QString &type, std::function<bool(const QVariantList &)> handler,
                      const QString &description = {});
     // A signal: emitted by the application, no state. Say it with fire().
     Node &addSignal(const QString &path, const QString &type = QStringLiteral("N"), const QString &description = {});

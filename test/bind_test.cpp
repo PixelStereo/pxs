@@ -71,7 +71,7 @@ int main(int argc, char **argv)
     // What OSCQuery says
     const QJsonObject c = tree.json("/detection/confidence");
     CHECK(c["TYPE"] == "f" && c["RANGE"].toArray().at(0).toObject()["MAX"] == 1.0 && c["VALUE"].toArray().at(0).toDouble() == 0.4);
-    CHECK(tree.json("/detection/hands")["TYPE"] == "i" && tree.json("/video/stop")["PXS_KIND"] == "message");
+    CHECK(tree.json("/detection/hands")["TYPE"] == "i" && tree.json("/video/stop")["ACCESS"] == 2 && !tree.json("/video/stop").contains("VALUE"));
     CHECK(tree.json("/analysis/size")["RANGE"].toArray().at(0).toObject()["VALS"].toArray().size() == 3);
     return failures ? 1 : 0;
 }

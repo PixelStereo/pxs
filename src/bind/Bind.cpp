@@ -107,7 +107,7 @@ Node &bindText(Tree &tree, const QString &path, QLineEdit *edit, const QString &
 Node &bindAction(Tree &tree, const QString &path, QAbstractButton *button, const QString &description)
 {
     QPointer<QAbstractButton> w(button);
-    return tree.addMessage(path, "N", [w](const QVariantList &) {
+    return tree.addAction(path, "N", [w](const QVariantList &) {
         if (!w || !w->isEnabled()) return false;
         w->click();
         return true;

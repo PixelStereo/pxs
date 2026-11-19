@@ -23,7 +23,7 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
     Tree tree;
     int cue = -1;
-    tree.addMessage("/show/go", "i", [&](const QVariantList &a) { cue = a.value(0).toInt(); return true; }, "Go to a cue");
+    tree.addAction("/show/go", "i", [&](const QVariantList &a) { cue = a.value(0).toInt(); return true; }, "Go to a cue");
     tree.addSignal("/detect/peak", "f", "A peak was heard");
     double level = 0.5;
     auto p = std::make_unique<Parameter>("level", "Level", Parameter::Type::Float);
@@ -38,8 +38,9 @@ int main(int argc, char **argv)
     QueryServer &q = service.query();
     auto body = [&](const char *target) { return QJsonDocument::fromJson(q.answer("GET", target).body).object(); };
     CHECK(body("/?HOST_INFO")["NAME"] == "TestApp" && body("/?HOST_INFO")["OSC_PORT"] == int(service.oscPort()));
-    CHECK(body("/?HOST_INFO")["EXTENSIONS"].toObject().contains("PXS_KIND"));
-    CHECK(body("/show/go")["PXS_KIND"] == "message" && body("/detect/peak")["PXS_KIND"] == "signal");
+    CHECK(!body("/?HOST_INFO")["EXTENSIONS"].toObject().contains("PXS_KIND"));
+    CHECK(!body("/show/go").contains("PXS_KIND") && !body("/show/go").contains("VALUE") && body("/show/go")["ACCESS"] == 2);
+    CHECK(!body("/detect/peak").contains("VALUE") && body("/detect/peak")["ACCESS"] == 1);
     CHECK(body("/level?VALUE")["VALUE"].toArray().at(0).toDouble() == 0.5);
     CHECK(q.answer("GET", "/nothing").status == 404 && q.answer("GET", "/detect/peak?VALUE").status == 204);
     CHECK(q.answer("POST", "/").status == 405);

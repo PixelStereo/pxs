@@ -6,9 +6,6 @@ OscService::OscService(Tree *tree, const QString &name, QObject *parent)
     : QObject(parent), m_tree(tree), m_name(name), m_http(tree, this), m_mdns(this)
 {
     m_http.setName(name);
-    QJsonObject extensions = Tree::defaultExtensions();
-    extensions["PXS_KIND"] = true; // message / signal leaves say what they are
-    m_http.setExtensions(extensions);
     connect(&m_udp, &QUdpSocket::readyRead, this, &OscService::onReadyRead);
     connect(&m_http, &QueryServer::logMessage, this, &OscService::logMessage);
     connect(&m_mdns, &MdnsResponder::logMessage, this, &OscService::logMessage);

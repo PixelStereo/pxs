@@ -20,19 +20,24 @@ pxs::Tree::message(*tree.find("/layer/1/enable")); // the OSC message that says 
 | Kind | State | Made with | OSCQuery |
 |---|---|---|---|
 | **parameter** | yes: read, written, saved, tells when it changes | `add(path, Parameter)`, or filled by hand | ACCESS 1 to 3, `VALUE`, `RANGE` |
-| **message** (action) | none: received, does something | `addMessage(path, "i", handler)` | ACCESS 2, `TYPE`, `PXS_KIND: "message"`, no `VALUE` |
-| **signal** (controller output) | none: the application emits it, nobody writes it | `addSignal(path, "f")`, then `fire(path, {args})` | ACCESS 1, `TYPE`, `PXS_KIND: "signal"`, no `VALUE` |
+| **action** | none: received, does something | `addAction(path, "i", handler)` | ACCESS 2, `TYPE`, no `VALUE` |
+| **signal** (controller output) | none: the application emits it, nobody writes it | `addSignal(path, "f")`, then `fire(path, {args})` | ACCESS 1, `TYPE`, no `VALUE` |
 
 ```cpp
-tree.addMessage("/show/go", "i", [&](const QVariantList &a) { goTo(a.value(0).toInt()); return true; }, "Go to a cue");
+tree.addAction("/show/go", "i", [&](const QVariantList &a) { goTo(a.value(0).toInt()); return true; }, "Go to a cue");
 tree.addSignal("/detect/peak", "f", "A peak was heard");
 tree.setOutput([&](const osc::Message &m) { sendToClients(m); });  // set once, by the service that sends
 tree.fire("/detect/peak", {0.8});     // a signal goes to the output
 tree.changed("/layer/1/opacity");     // a parameter's new value goes to the output (the feedback)
 ```
 
-A message with no argument has the type `N`. Everything an application says (a signal, a parameter's feedback) goes
-through the same output, so a client that listens hears all three the same way. A `Trigger` parameter is a message.
+No extension tells them apart: OSCQuery's own `ACCESS` and `VALUE` do. A leaf with a `VALUE` is a parameter, so a
+parameter always has a value that can be read (ACCESS 1 or 3). A leaf with no `VALUE` is an action when it is written
+(ACCESS 2) and a signal when it is read (ACCESS 1). A setter with no getter is therefore declared as an action, never as
+a parameter. Any OSCQuery client reads the three the same way.
+
+An action with no argument has the type `N`. Everything an application says (a signal, a parameter's feedback) goes
+through the same output, so a client that listens hears all three the same way. A `Trigger` parameter is an action.
 
 A node can also be filled in by hand, for an application that already has its own way to read and write a value:
 
@@ -94,9 +99,9 @@ through the widget, so it does what a click does, and a user's change tells the 
 pxs::bindToggle(tree, "/osc/send", sendButton, "Send the signals");     // parameter
 pxs::bindNumber(tree, "/detection/confidence", field, "Confidence");    // parameter, range from the field
 pxs::bindChoice(tree, "/analysis/size", combo);                         // parameter, keys = item texts in lowercase
-pxs::bindAction(tree, "/video/stop", stopButton);                       // message
+pxs::bindAction(tree, "/video/stop", stopButton);                       // action
 tree.addSignal("/face/head/yaw", "f");                                  // signal, then tree.fire(...)
 ```
 
 What an application exposes is its choice, but never less than what a user can do in the interface: every control is a
-parameter or a message, every value the application computes for the outside is a signal.
+parameter or an action, every value the application computes for the outside is a signal.
