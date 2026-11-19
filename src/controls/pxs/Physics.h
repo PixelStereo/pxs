@@ -14,6 +14,8 @@ namespace pxs::controls::physics {
 struct Body {
     std::vector<double> pos, vel, target; // 0..1 of each number's range (vel per second)
     bool held = false;                    // the hand is on the control
+    std::vector<char> hand;               // which numbers it holds (empty: all of them); a pad's other balls go on by themselves
+    bool holds(size_t i) const { return held && (hand.empty() || (i < hand.size() && hand[i])); }
     bool moving = false;
     qint64 movedAt = 0;
 };
@@ -72,12 +74,12 @@ inline bool step(const Control &c, Body &b, double dt)
             if (std::abs(t - u) < 5e-4) u = t;
             else moving = true;
         } else {
-            v += (b.held ? p.attraction : p.tension) * (t - u) * dt; // attracted to the finger; let go, pulled to where it was (tension 0: thrown)
+            v += (b.holds(i) ? p.attraction : p.tension) * (t - u) * dt; // attracted to the finger; let go, pulled to where it was (tension 0: thrown)
             v *= std::exp(-p.friction * dt);
             u += v * dt;
             if (u < 0) { u = 0; v = -v * p.wall; }
             if (u > 1) { u = 1; v = -v * p.wall; }
-            if (std::abs(v) > 2e-3 || ((b.held ? p.attraction : p.tension) > 0 && std::abs(t - u) > 5e-4)) moving = true;
+            if (std::abs(v) > 2e-3 || ((b.holds(i) ? p.attraction : p.tension) > 0 && std::abs(t - u) > 5e-4)) moving = true;
             else v = 0;
         }
     }

@@ -114,6 +114,19 @@ int main()
         c.physics = {2, 7, 90, 15, 0.25, 9};
         const Control again = Control::fromJson(c.toJson());
         check(again.physics == c.physics, "its physics goes through JSON");
+        // Two balls of a pad: the hand holds one, the other goes on by itself
+        {
+            Control pad;
+            pad.kind = Control::Kind::Points;
+            pad.count = 2;
+            pad.min = 0, pad.max = 1;
+            pad.physics = {2, 5, 120, 0, 0.6, 12};
+            ph::Body two;
+            two.pos = {0.5, 0.5, 0.5, 0.5}, two.vel = {0.4, 0.0, 0.0, 0.0}, two.target = {0.5, 0.5, 0.1, 0.1};
+            two.held = true, two.hand = {0, 0, 1, 1};
+            for (int i = 0; i < 20; ++i) ph::step(pad, two, 0.016);
+            check(two.pos[0] > 0.52 && two.pos[2] < 0.5, "a ball that is not held keeps its throw while the other follows the hand");
+        }
         Control t;
         t.kind = Control::Kind::Toggle;
         t.applyProps(QJsonObject{{"physics", QJsonObject{{"mode", 2}}}});
