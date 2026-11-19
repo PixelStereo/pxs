@@ -1,6 +1,7 @@
 #include "pxs/Client.h"
 
 #include <QHostInfo>
+#include <memory>
 #include <cmath>
 #include <QJsonDocument>
 #include <QNetworkReply>
@@ -106,12 +107,9 @@ void Client::open(const QString &host, quint16 httpPort)
         m_oscPort = quint16(info.value("OSC_PORT").toInt());
         const bool listen = info.value("EXTENSIONS").toObject().value("LISTEN").toBool();
         const int wsPort = info.contains("WS_PORT") ? info.value("WS_PORT").toInt() : m_httpPort;
-        QHostInfo::lookupHost(m_host, this, [this, listen, wsPort, generation = m_generation](const QHostInfo &found) {
-            if (generation != m_generation) return;
-            if (found.addresses().isEmpty()) return fail(QStringLiteral("Unknown host %1").arg(m_host));
-            m_address = found.addresses().first();
-            for (const QHostAddress &a : found.addresses())
-                if (a.protocol() == QAbstractSocket::IPv4Protocol) { m_address = a; break; }
+        // The address: a number is taken as it is (a device found on the network gives one), a name is looked up
+        const auto proceed = [this, listen, wsPort](const QHostAddress &address) {
+            m_address = address;
             if (listen) openSocket(quint16(wsPort));
             get(QStringLiteral("/"), [this](const QJsonDocument &tree) {
                 if (!m_tree.load(tree.object())) return fail(QStringLiteral("Not an OSCQuery tree"));
@@ -119,6 +117,24 @@ void Client::open(const QString &host, quint16 httpPort)
                 m_poll.start(); // also with a WebSocket, slowly: a device that says it pushes does not always (see poll())
                 emit ready();
             });
+        };
+        QHostAddress literal;
+        if (literal.setAddress(m_host)) return proceed(literal);
+        auto done = std::make_shared<bool>(false);
+        const int generation = m_generation;
+        QTimer::singleShot(4000, this, [this, done, generation] { // a lookup that never answers is a failure, not a wait
+            if (*done || generation != m_generation) return;
+            *done = true;
+            fail(QStringLiteral("Cannot find %1").arg(m_host));
+        });
+        QHostInfo::lookupHost(m_host, this, [this, proceed, done, generation](const QHostInfo &found) {
+            if (*done || generation != m_generation) return;
+            *done = true;
+            if (found.addresses().isEmpty()) return fail(QStringLiteral("Unknown host %1").arg(m_host));
+            QHostAddress address = found.addresses().first();
+            for (const QHostAddress &a : found.addresses())
+                if (a.protocol() == QAbstractSocket::IPv4Protocol) { address = a; break; }
+            proceed(address);
         });
     });
 }

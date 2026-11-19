@@ -33,7 +33,7 @@ header h1 { flex:1; margin:0 10px 0 0; font-size:16px; font-weight:600; white-sp
 .tile.sec .face { background:transparent; border:0; border-bottom:1px solid var(--line); border-radius:0; padding:12px 2px 0; }
 .sec .hd { font-size:13px; }
 .hd { display:flex; justify-content:space-between; align-items:baseline; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); white-space:nowrap; }
-.dest { font-size:10px; color:var(--dim); opacity:.8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family:ui-monospace,Menlo,monospace; }
+.dest { font-size:10px; line-height:1.25; color:var(--dim); opacity:.8; overflow:hidden; word-break:break-all; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-family:ui-monospace,Menlo,monospace; }
 .hd span { overflow:hidden; text-overflow:ellipsis; }
 .hd b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:0; margin-left:8px; }
 .bd { flex:1; min-height:0; position:relative; display:flex; align-items:center; justify-content:center; }
@@ -465,6 +465,17 @@ inline constexpr char kScriptC[] = R"JS(
   window.addEventListener('resize', () => { if (items.length) placeAll(); });
   window.addEventListener('orientationchange', () => setTimeout(() => { if (items.length) placeAll(); }, 250));
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E') && $('#edit').style.display !== 'none' && !$('#edit').hidden) { e.preventDefault(); $('#edit').click(); } }); // Cmd/Ctrl+E
+  // Something dragged onto the page from outside (an address from a tree beside it): the application is told where
+  window.pxsPageId = () => pageId; // the page shown now (an application's front page puts what it adds there)
+  const dropType = 'application/x-pxs-address';
+  const droppable = e => e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], dropType) >= 0;
+  document.addEventListener('dragover', e => { if (droppable(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+  document.addEventListener('drop', e => {
+    if (!droppable(e)) return;
+    e.preventDefault();
+    const r = $('#grid').getBoundingClientRect();
+    send({ t: 'drop', data: e.dataTransfer.getData(dropType), page: String(pageId), x: compact ? 0 : clamp(Math.floor((e.clientX - r.left) / cell), 0, 11), y: compact ? 9999 : Math.max(0, Math.floor((e.clientY - r.top) / rowH)) });
+  });
   $('#edit').onclick = () => { editing = !editing; $('#edit').classList.toggle('on', editing); if (!editing) closeSheet(); render(); };
 )JS";
 
