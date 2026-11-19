@@ -33,7 +33,7 @@ header h1 { flex:1; margin:0 10px 0 0; font-size:16px; font-weight:600; white-sp
 .tile.sec .face { background:transparent; border:0; border-bottom:1px solid var(--line); border-radius:0; padding:12px 2px 0; }
 .sec .hd { font-size:13px; }
 .hd { display:flex; justify-content:space-between; align-items:baseline; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); white-space:nowrap; }
-.dest { font-size:10px; color:var(--dim); opacity:.8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family:ui-monospace,Menlo,monospace; }
+.dest { font-size:10px; line-height:1.25; color:var(--dim); opacity:.8; overflow:hidden; word-break:break-all; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-family:ui-monospace,Menlo,monospace; }
 .hd span { overflow:hidden; text-overflow:ellipsis; }
 .hd b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:0; margin-left:8px; }
 .bd { flex:1; min-height:0; position:relative; display:flex; align-items:center; justify-content:center; }
