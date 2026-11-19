@@ -559,7 +559,7 @@ inline constexpr char kScriptD[] = R"JS(
       r.oninput = () => { p[key] = Number(to(Number(r.value) / 1000).toFixed(3)); say(); save(Object.assign({}, p)); }; say(); box.appendChild(r); box.appendChild(h); };
     const build = () => { box.textContent = '';
       if (p.mode === 1) knob('Speed', 'rate', 0.5, 60, true);
-      if (p.mode === 2) { knob('Attraction to the finger', 'tension', 0, 400, true); knob('Friction', 'friction', 0, 30, true); knob('Wall bounce', 'wall', 0, 1, false); } };
+      if (p.mode === 2) { knob('Attraction to the finger', 'attraction', 0, 400, true); knob('Tension (pulls back to where the finger was; 0: thrown)', 'tension', 0, 400, true); knob('Friction', 'friction', 0, 30, true); knob('Wall bounce', 'wall', 0, 1, false); } };
     mode.onchange = () => { p.mode = Number(mode.value); build(); save(Object.assign({}, p)); }; build();
   }
   // A pad of balls: a menu of the balls with + and -, and the range, addresses, color and physics of the chosen one

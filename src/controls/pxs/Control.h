@@ -19,22 +19,24 @@
 namespace pxs::controls {
 
 // What moves a control's numbers (Server.h runs it), as in Lemur: Interpolate (the value glides to where the hand is) or Mass-Spring (it is
-// held to the hand by a spring and, when the hand lets go, goes on with the push the hand gave it: friction slows it, the walls bounce it). All of it in the 0..1 of each number's range
+// attracted to the finger and, when the finger lets go, goes on with the push it gave: thrown, it bounces on the walls; with a tension, it is
+// pulled to where the finger last was and settles there after some bounces: friction slows it, the walls bounce it). All of it in the 0..1 of each number's range
 struct Physics {
     enum Mode { None = 0, Interpolate = 1, MassSpring = 2 };
     int mode = None;
     double friction = 5;   // 0..30, a rate per second
-    double tension = 60;   // 0..400, the attraction to the finger (Lemur's Attraction)
+    double attraction = 120; // 0..400, the pull to the finger while it is on the control (Lemur's Attraction)
+    double tension = 30;     // 0..400, the pull to where the finger last was, once it has let go (0: the ball is thrown, free)
     double wall = 0.6;     // 0..1, what is kept of the speed against an end of the range
     double rate = 12;      // 0.5..60 per second, how fast Interpolate follows the hand
     bool on() const { return mode != None; }
     bool operator==(const Physics &o) const
     {
-        return mode == o.mode && friction == o.friction && tension == o.tension && wall == o.wall && rate == o.rate;
+        return mode == o.mode && friction == o.friction && attraction == o.attraction && tension == o.tension && wall == o.wall && rate == o.rate;
     }
     QJsonObject toJson() const
     {
-        return QJsonObject{{"mode", mode}, {"friction", friction}, {"tension", tension}, {"wall", wall}, {"rate", rate}};
+        return QJsonObject{{"mode", mode}, {"friction", friction}, {"attraction", attraction}, {"tension", tension}, {"wall", wall}, {"rate", rate}};
     }
     void apply(const QJsonObject &p)
     {
@@ -43,6 +45,7 @@ struct Physics {
         };
         if (p.value("mode").isDouble()) mode = std::clamp(p.value("mode").toInt(), 0, 2);
         number("friction", 0, 30, friction);
+        number("attraction", 0, 400, attraction);
         number("tension", 0, 400, tension);
         number("wall", 0, 1, wall);
         number("rate", 0.5, 60, rate);
@@ -55,6 +58,7 @@ struct Ball {
     QString name, px, py, accent;
     double minX = 0, maxX = 1, minY = 0, maxY = 1;
     Physics physics;
+    Ball() { physics.tension = 0; } // a ball is thrown
     static QString cleanAddress(const QString &a) { return a.isEmpty() || (a.startsWith(QLatin1Char('/')) && a.size() < 200) ? a : QString(); }
     QJsonObject toJson() const
     {

@@ -298,9 +298,9 @@ int main(int argc, char **argv)
         phone.sendText("{\"t\":\"undo\"}");
         phone.pumpUntil([&] { return fake.list.size() == 2; });
         // Physics: a slider held to the hand by a spring
-        phone.sendText("{\"t\":\"edit\",\"id\":\"1\",\"props\":{\"physics\":{\"mode\":2,\"friction\":30,\"tension\":150}}}");
+        phone.sendText("{\"t\":\"edit\",\"id\":\"1\",\"props\":{\"physics\":{\"mode\":2,\"friction\":30,\"attraction\":150,\"tension\":0}}}");
         phone.pumpUntil([&] { return fake.find(1)->physics.mode == 2; });
-        require(fake.find(1)->physics.mode == 2 && near(fake.find(1)->physics.tension, 150), "a control's physics set from the page");
+        require(fake.find(1)->physics.mode == 2 && near(fake.find(1)->physics.attraction, 150), "a control's physics set from the page");
         phone.sendText("{\"t\":\"set\",\"id\":\"1\",\"v\":8}");
         phone.pumpUntil([&] { return near(fake.find(1)->value, 8, 0.1); }, 4000);
         require(near(fake.find(1)->value, 8, 0.1), "held by the finger, a slider with physics goes to it through its attraction");

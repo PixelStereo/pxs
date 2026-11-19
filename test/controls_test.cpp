@@ -70,7 +70,7 @@ int main()
         c.kind = Control::Kind::Slider;
         c.min = 0, c.max = 10, c.value = 2;
         c.physics.mode = pxs::controls::Physics::MassSpring;
-        c.physics.friction = 3, c.physics.tension = 80;
+        c.physics.friction = 3, c.physics.attraction = 80, c.physics.tension = 0;
         ph::Body b;
         b.pos = {0.2}, b.vel = {0.5}, b.target = {0.2};
         int steps = 0;
@@ -80,17 +80,27 @@ int main()
         b.pos = {0.99}, b.vel = {1.0}, b.held = false;
         ph::step(c, b, 0.016), ph::step(c, b, 0.016);
         check(b.pos[0] <= 1 && b.vel[0] < 0, "it bounces on the wall");
-        c.physics.tension = 200, c.physics.friction = 20;
+        c.physics.attraction = 200, c.physics.friction = 20;
         b.pos = {0.0}, b.vel = {0.0}, b.target = {0.8}, b.held = true;
         steps = 0;
         while (ph::step(c, b, 0.016) && steps < 5000) ++steps;
         check(near(b.pos[0], 0.8, 1e-3), "held by the attraction, it settles on the finger");
+        // let go at 0.8 after being pressed there, with a tension: it settles on 0.8 after some bounces (a slider at 0.2, pressed on 0.8)
+        c.physics.attraction = 120, c.physics.tension = 40, c.physics.friction = 5;
+        b.pos = {0.2}, b.vel = {0.0}, b.target = {0.8}, b.held = true;
+        for (int i = 0; i < 12; ++i) ph::step(c, b, 0.016); // let go before it has got there
+        b.held = false;
+        bool crossed = false;
+        steps = 0;
+        double last = b.pos[0];
+        while (ph::step(c, b, 0.016) && steps < 5000) { crossed |= (last - 0.8) * (b.pos[0] - 0.8) < 0; last = b.pos[0]; ++steps; }
+        check(steps < 5000 && crossed && near(b.pos[0], 0.8, 1e-3), "let go, a tensioned slider bounces around where the finger was and settles there");
         c.physics.mode = pxs::controls::Physics::Interpolate, c.physics.rate = 10;
         b.pos = {0.0}, b.target = {1.0}, b.held = true;
         ph::step(c, b, 0.1);
         check(b.pos[0] > 0.5 && b.pos[0] < 1, "interpolate glides to the hand");
         c.physics.mode = pxs::controls::Physics::MassSpring;
-        c.physics = {2, 7, 90, 0.25, 9};
+        c.physics = {2, 7, 90, 15, 0.25, 9};
         const Control again = Control::fromJson(c.toJson());
         check(again.physics == c.physics, "its physics goes through JSON");
         Control t;
