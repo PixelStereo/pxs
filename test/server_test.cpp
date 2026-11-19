@@ -186,6 +186,28 @@ public:
     }
 };
 
+// An application with its own front page, which frames the controls page, and a message of its own
+class Front : public Server
+{
+public:
+    using Server::Server;
+    QList<QJsonObject> dropped;
+
+protected:
+    bool servePage(const QString &path, QByteArray *html, QByteArray *csp) override
+    {
+        if (path != QLatin1String("/")) return false;
+        *html = "<html>FRONT</html>";
+        *csp = policy("s", "t", "frame-src 'self'");
+        return true;
+    }
+    bool message(QTcpSocket *, const QString &type, const QJsonObject &o) override
+    {
+        if (type == QLatin1String("drop")) dropped << o;
+        return true;
+    }
+};
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -269,6 +291,36 @@ int main(int argc, char **argv)
         phone.sendText("{\"t\":\"set\",\"id\":\"999\",\"v\":1}");
         phone.pump(100);
         require(server.isRunning(), "junk is ignored, nothing falls");
+        { // a front page of the application, framing the controls page; a drop from outside reaches the application
+            Fake fake2;
+            fake2.list = {level};
+            Front front(&fake2);
+            front.setFrameable(true);
+            require(front.start(0, QString(), "127.0.0.1"), "the front server starts");
+            Client c;
+            require(c.connectTo(front.port()), "connect");
+            const QByteArray root = c.request("GET / HTTP/1.1\r\nHost: x\r\n\r\n");
+            require(root.startsWith("HTTP/1.1 200") && root.contains("FRONT") && root.contains("frame-src 'self'"), "the application's front page is served at /");
+            Client d;
+            require(d.connectTo(front.port()), "connect");
+            const QByteArray control = d.request("GET /control HTTP/1.1\r\nHost: x\r\n\r\n");
+            require(control.contains("X-Frame-Options: SAMEORIGIN") && control.contains("frame-ancestors 'self'"), "the controls page can be framed by it, and by nothing else");
+            Client p;
+            require(p.connectTo(front.port()), "connect");
+            const QByteArray hp = "127.0.0.1:" + QByteArray::number(front.port());
+            require(p.upgrade("/ws", "http://" + hp, hp).startsWith("HTTP/1.1 101"), "the WebSocket opens");
+            p.sendText("{\"t\":\"drop\",\"data\":\"x\",\"page\":\"-1\",\"x\":3,\"y\":4}");
+            p.pumpUntil([&] { return !front.dropped.isEmpty(); });
+            require(front.dropped.size() == 1 && front.dropped[0].value("x").toInt() == 3, "a drop from outside reaches the application");
+            Server plain(&fake2);
+            require(plain.start(0, QString(), "127.0.0.1"), "a plain server starts");
+            Client e;
+            require(e.connectTo(plain.port()), "connect");
+            require(e.request("GET / HTTP/1.1\r\nHost: x\r\n\r\n").startsWith("HTTP/1.1 302"), "without a front page, / leads to /control");
+            Client g;
+            require(g.connectTo(plain.port()), "connect");
+            require(g.request("GET /control HTTP/1.1\r\nHost: x\r\n\r\n").contains("X-Frame-Options: DENY"), "and the page cannot be framed");
+        }
         std::printf("controls server: OK\n");
         return 0;
     } catch (const std::exception &e) {

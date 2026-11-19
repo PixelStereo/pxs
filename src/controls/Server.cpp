@@ -47,20 +47,21 @@ QJsonValue jsonOf(const std::vector<double> &v)
 }
 } // namespace
 
-QByteArray Server::response(int status, const QByteArray &body, const QByteArray &type, const QByteArray &extra)
+QByteArray Server::response(int status, const QByteArray &body, const QByteArray &type, const QByteArray &extra, bool frameable)
 {
     static const QHash<int, QByteArray> text = {{200, "OK"}, {302, "Found"}, {400, "Bad Request"}, {403, "Forbidden"}, {404, "Not Found"}, {429, "Too Many Requests"}};
     QByteArray r = "HTTP/1.1 " + QByteArray::number(status) + ' ' + text.value(status, "Error") + "\r\n";
     r += "Content-Type: " + type + "\r\nContent-Length: " + QByteArray::number(body.size()) + "\r\n";
     r += "Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n";
+    if (frameable) r.replace("X-Frame-Options: DENY", "X-Frame-Options: SAMEORIGIN"); // framed by a page of the same site only
     r += extra + "Connection: close\r\n\r\n";
     return r + body;
 }
 
-QByteArray Server::policy(const QByteArray &script, const QByteArray &style)
+QByteArray Server::policy(const QByteArray &script, const QByteArray &style, const QByteArray &extra, bool frameable)
 {
     return "default-src 'none'; script-src " + hashOf(script) + "; style-src " + hashOf(style) +
-           "; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+           "; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors " + QByteArray(frameable ? "'self'" : "'none'") + (extra.isEmpty() ? QByteArray() : "; " + extra);
 }
 
 QByteArray Server::page(const QString &title)
@@ -72,7 +73,6 @@ QByteArray Server::page(const QString &title)
 
 Server::Server(Backend *backend, QObject *parent) : QObject(parent), m_backend(backend)
 {
-    m_csp = policy(page::script(), page::style());
     m_timer.setInterval(50);
     connect(&m_timer, &QTimer::timeout, this, &Server::push);
 }
@@ -97,6 +97,7 @@ bool Server::pinValid(const QString &pin)
 bool Server::start(quint16 port, const QString &pin, const QString &listen)
 {
     stop();
+    m_csp = policy(page::script(), page::style(), {}, m_frameable);
     if (!pin.isEmpty() && !pinValid(pin)) {
         m_status = m_name + QStringLiteral(": the code has to be 4 to 32 letters or digits");
         return false;
@@ -290,11 +291,16 @@ void Server::onData(QTcpSocket *s)
             s->disconnectFromHost();
             return;
         } else if (path == QLatin1String("/")) {
+            if (QByteArray html, csp; servePage(path, &html, &csp)) { // an application's own front page
+                send(s, response(200, html, "text/html; charset=utf-8", "Content-Security-Policy: " + csp + "\r\n"));
+                s->disconnectFromHost();
+                return;
+            }
             send(s, response(302, {}, "text/plain", "Location: /control\r\n"));
             s->disconnectFromHost();
             return;
         } else if (path == QLatin1String("/control")) {
-            send(s, response(200, page(m_pageTitle), "text/html; charset=utf-8", "Content-Security-Policy: " + m_csp + "\r\n"));
+            send(s, response(200, page(m_pageTitle), "text/html; charset=utf-8", "Content-Security-Policy: " + m_csp + "\r\n", m_frameable));
             s->disconnectFromHost();
             return;
         } else if (QByteArray html, csp; servePage(path, &html, &csp)) {

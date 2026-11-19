@@ -8,12 +8,14 @@
 // Content-Security-Policy allows. No encryption: the PIN and the values cross the network in clear, as OSC does.
 //
 // Protocol (text frames, JSON), for those who want their own client:
+//   GET /       the application's own front page when it has one (servePage), else /control
 //   GET /info          {"pin":true|false}: whether a code is asked
 //   GET /ws?pin=<PIN>  upgrade to a WebSocket (no pin= when none is asked)
 //   server -> {"t":"controls","title":..,"show":true|false,"list":[Control::wireJson()…]}   at connection, and when a control is added, removed or shaped
 //   server -> {"t":"values","v":{"<id>":<number>|[numbers]}}              what changed
 //   client -> {"t":"set","id":"<id>","v":<number>}   {"t":"color","id":..,"rgb":[r,g,b]}   {"t":"point","id":..,"xy":[x,y]}
 //             {"t":"points","id":..,"v":[x1,y1,x2,y2…]}   {"t":"multi","id":..,"v":[…]}   {"t":"adsr","id":..,"v":[a,d,s,r]}
+//   client -> {"t":"drop","data":"<text>","page":"<id>","x":..,"y":..}   something dragged onto the page from outside (the application's own message: `message()`)
 //   client -> {"t":"layout","items":{"<id>":{"x","y","w","h"}}}   {"t":"edit","id":..,"props":{…}} (Control::applyProps)   {"t":"remove","id":..}
 // An application adds its own pages and messages through the hooks (servePage, message, tick).
 #include "Control.h"
@@ -74,10 +76,13 @@ public:
     static bool pinValid(const QString &pin); // 4 to 32 letters or digits (an empty one is "no code": start() takes it)
     void setName(const QString &name) { m_name = name; }           // what the status calls it ("Remote")
     void setPageTitle(const QString &title) { m_pageTitle = title; } // the page's title in a browser's tab
+    // The controls page may be framed by a page of this same server (an application's front page with the page beside its own panel). Call before start()
+    void setFrameable(bool on) { m_frameable = on; }
 
     // The controls page as served, and the policy that lets only its code run
     static QByteArray page(const QString &title);
-    static QByteArray policy(const QByteArray &script, const QByteArray &style);
+    // `extra`: more directives (an application's page that frames this one: "frame-src 'self'")
+    static QByteArray policy(const QByteArray &script, const QByteArray &style, const QByteArray &extra = {}, bool frameable = false);
 
 signals:
     void clientsChanged(int count);
@@ -96,7 +101,7 @@ protected:
     void sendText(QTcpSocket *client, const QByteArray &json) const;
     QList<QTcpSocket *> websockets() const;
     void leaveControls(QTcpSocket *client); // this client has pages of its own: the controls are not pushed to it
-    static QByteArray response(int status, const QByteArray &body, const QByteArray &type, const QByteArray &extra = {});
+    static QByteArray response(int status, const QByteArray &body, const QByteArray &type, const QByteArray &extra = {}, bool frameable = false);
 
 private:
     struct Client {
@@ -126,6 +131,7 @@ private:
     QTimer m_timer;
     QString m_pin, m_status, m_name = QStringLiteral("Remote"), m_pageTitle = QStringLiteral("Controls");
     QByteArray m_csp;
+    bool m_frameable = false;
     QHash<QString, Attempts> m_attempts; // by address
 };
 
