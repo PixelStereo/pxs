@@ -35,7 +35,6 @@ private:
     QTreeWidgetItem *deviceItem(quint64 id) const;
     void addPath(quint64 device, const QString &path);
     void addBelow(QTreeWidgetItem *item);
-    void share(bool on);
     void addByHand();
     void say(const QString &message) { statusBar()->showMessage(message, 6000); }
     bool eventFilter(QObject *watched, QEvent *event) override;

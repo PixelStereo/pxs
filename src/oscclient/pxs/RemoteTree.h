@@ -38,6 +38,8 @@ public:
     const RemoteNode *find(const QString &path) const;
     // A value the device told (LISTEN, ?VALUE, a message); false: no such node
     bool setValue(const QString &path, const QJsonArray &value);
+    // What the tree is made of, not its values: two trees with the same signature show the same
+    QByteArray signature() const;
     // The addresses of every leaf, in order
     QStringList leaves() const;
 

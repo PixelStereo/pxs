@@ -25,6 +25,7 @@ public:
     void setName(const QString &name) { m_name = name; }
     void setOscPort(quint16 port) { m_oscPort = port; }
     void setExtensions(const QJsonObject &extensions) { m_extensions = extensions; }
+    void setHostInfoMore(const QJsonObject &more) { m_more = more; } // other HOST_INFO members (WS_PORT)
 
     // The HTTP answer to a request line target, public for tests
     struct Response {
@@ -46,6 +47,7 @@ private:
     QString m_name = QStringLiteral("pxs");
     quint16 m_oscPort = 0;
     QJsonObject m_extensions = Tree::defaultExtensions();
+    QJsonObject m_more;
 };
 
 } // namespace pxs

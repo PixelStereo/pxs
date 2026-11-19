@@ -69,10 +69,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     auto *bar = addToolBar(tr("Devices"));
     bar->setMovable(false);
     bar->addAction(tr("Add device…"), this, &MainWindow::addByHand);
-    QAction *shareAction = bar->addAction(tr("Share page"));
-    shareAction->setCheckable(true);
-    shareAction->setToolTip(tr("Serve the page to phones and tablets of the network (with a code)"));
-    connect(shareAction, &QAction::toggled, this, &MainWindow::share);
     m_share = new QLabel;
     m_share->setTextInteractionFlags(Qt::TextSelectableByMouse);
     statusBar()->addPermanentWidget(m_share);
@@ -109,7 +105,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         if (!menu.isEmpty()) menu.exec(m_tree->viewport()->mapToGlobal(at));
     });
 
-    if (!m_explorer.serve(false, QString())) say(tr("The page cannot be served: %1").arg(m_explorer.server().status()));
+    // The page is served to the network as it is: no code, whoever is on it can play it
+    if (!m_explorer.serve()) say(tr("The page cannot be served: %1").arg(m_explorer.server().status()));
+    m_share->setText(tr("Page at %1").arg(m_explorer.networkUrls().value(0)));
     m_view->setUrl(QUrl(m_explorer.pageUrl()));
     if (!m_explorer.startSearch()) say(tr("The network cannot be searched (mDNS): add a device by hand"));
     rebuildDevices();
@@ -230,20 +228,6 @@ void MainWindow::addByHand()
     const QString host = text.left(colon).trimmed();
     const quint64 id = m_explorer.addDevice(QString(), host, port);
     m_explorer.openDevice(id);
-}
-
-void MainWindow::share(bool on)
-{
-    if (!on) {
-        m_explorer.serve(false, QString());
-        m_view->setUrl(QUrl(m_explorer.pageUrl()));
-        m_share->clear();
-        return;
-    }
-    const QString pin = pxs::controls::Server::makePin();
-    if (!m_explorer.serve(true, pin)) return say(tr("The page cannot be shared: %1").arg(m_explorer.server().status()));
-    m_view->setUrl(QUrl(m_explorer.pageUrl()));
-    m_share->setText(tr("Page at %1 — code %2").arg(m_explorer.networkUrls().value(0), pin));
 }
 
 // Drops on the page: Qt WebEngine's own widgets take them, so each one is watched

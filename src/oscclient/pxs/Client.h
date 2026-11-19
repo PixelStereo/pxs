@@ -69,6 +69,8 @@ private:
     QString m_host, m_name;
     quint16 m_httpPort = 0, m_oscPort = 0;
     bool m_pushes = false;
+    int m_slow = 0, m_ticks = 0;
+    bool m_refreshing = false;
     int m_generation = 0; // answers of an earlier open() are dropped
     QSet<QString> m_listening;
     QHostAddress m_address;

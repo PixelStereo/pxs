@@ -128,10 +128,10 @@ quint64 Explorer::addControl(quint64 deviceId, const QString &path, quint64 grou
 
 // The page
 
-bool Explorer::serve(bool network, const QString &pin)
+bool Explorer::serve()
 {
     m_server->stop();
-    return m_server->start(0, pin, network ? QString() : QStringLiteral("127.0.0.1"));
+    return m_server->start(0, QString());
 }
 
 QString Explorer::pageUrl() const

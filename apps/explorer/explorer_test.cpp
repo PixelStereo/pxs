@@ -71,7 +71,7 @@ int main(int argc, char **argv)
     CHECK(!ex.remove(id));
 
     // The page is served on the loopback
-    CHECK(ex.serve(false, QString()) && ex.pageUrl().startsWith("http://127.0.0.1:"));
+    CHECK(ex.serve() && ex.pageUrl().startsWith("http://127.0.0.1:"));
 
     if (!failures) std::printf("explorer: ok\n");
     return failures ? 1 : 0;

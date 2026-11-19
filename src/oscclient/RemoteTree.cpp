@@ -1,5 +1,6 @@
 #include "pxs/RemoteTree.h"
 
+#include <QJsonDocument>
 #include <cmath>
 
 namespace pxs::oscquery {
@@ -60,6 +61,20 @@ static void collect(const RemoteNode &n, QStringList *out)
 {
     if (n.isLeaf()) out->append(n.path);
     for (const auto &c : n.children) collect(c.second, out);
+}
+
+static void sign(const RemoteNode &n, QByteArray *out)
+{
+    *out += n.path.toUtf8() + '|' + n.type.toUtf8() + '|' + QByteArray::number(n.access) + '|' + n.kind.toUtf8() + '|' +
+            QJsonDocument(n.range).toJson(QJsonDocument::Compact) + '\n';
+    for (const auto &c : n.children) sign(c.second, out);
+}
+
+QByteArray RemoteTree::signature() const
+{
+    QByteArray out;
+    sign(m_root, &out);
+    return out;
 }
 
 QStringList RemoteTree::leaves() const

@@ -120,7 +120,7 @@ inline constexpr char kStyleB[] = R"CSS(
 )CSS";
 
 inline constexpr char kBody[] = R"HTML(
-<header><h1 id="title">NyxMap</h1><span id="state">…</span><button class="hb" id="edit" hidden>Edit</button><a class="hb" id="toShow" href="/show">Show control →</a></header>
+<header><h1 id="title">Controls</h1><span id="state">…</span><button class="hb" id="edit" hidden>Edit</button><a class="hb" id="toShow" href="/show" hidden>Show control →</a></header>
 <nav id="tabs" hidden></nav>
 <div id="login" hidden><h2>NyxMap remote</h2><p id="loginText">Enter the code set in NyxMap (Settings › OSC › Remote).</p><input id="pin" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="numeric" placeholder="PIN"><button id="go">Connect</button></div>
 <main id="grid" hidden></main>
@@ -205,7 +205,7 @@ inline constexpr char kScriptA[] = R"JS(
     ws.onmessage = e => {
       let m; try { m = JSON.parse(e.data); } catch (_) { return; }
       if (m.t === 'controls') {
-        controls = m.list || []; byId = {}; $('#title').textContent = m.title || 'NyxMap';
+        controls = m.list || []; byId = {}; $('#title').textContent = m.title || 'Controls'; $('#toShow').hidden = !m.show;
         controls.forEach(c => { byId[c.id] = c; values[c.id] = c.kind === 'color' ? c.rgb : c.kind === 'pad' ? [c.x, c.y] : c.kind === 'adsr' ? c.adsr : c.kind === 'multi' ? c.values : c.kind === 'points' ? [].concat.apply([], c.points) : c.value; });
         if (busy && Date.now() - busyAt < 4000) again = true; else { busy = 0; render(); } // a gesture that never ended must not freeze the page
       } else if (m.t === 'values') { Object.assign(values, m.v || {}); update(); }

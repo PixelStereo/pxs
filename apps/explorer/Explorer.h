@@ -35,8 +35,8 @@ public:
     // A control that is a view of this parameter of this device (false: it has no such parameter, or not one a control can show)
     quint64 addControl(quint64 deviceId, const QString &path, quint64 group = 0);
 
-    // The page: served on the loopback (and, when asked, to the network)
-    bool serve(bool network, const QString &pin);
+    // The page: served to the network, with no code; this machine's own view uses the loopback
+    bool serve();
     QString pageUrl() const;
     QStringList networkUrls() const;
     pxs::controls::Server &server() { return *m_server; }

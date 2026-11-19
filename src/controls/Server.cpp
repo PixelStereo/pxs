@@ -219,7 +219,7 @@ QByteArray Server::controlsMessage(const std::vector<Control> &controls) const
     QJsonArray list;
     for (const Control &c : controls) list.append(c.wireJson());
     const QString title = m_backend->title();
-    return QJsonDocument(QJsonObject{{"t", "controls"}, {"title", title.isEmpty() ? m_name : title}, {"list", list}}).toJson(QJsonDocument::Compact);
+    return QJsonDocument(QJsonObject{{"t", "controls"}, {"title", title.isEmpty() ? m_name : title}, {"show", hasShowPage()}, {"list", list}}).toJson(QJsonDocument::Compact);
 }
 
 void Server::onData(QTcpSocket *s)

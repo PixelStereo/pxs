@@ -19,7 +19,7 @@ constexpr int kMaxReply = 8 << 20;
 
 Client::Client(QObject *parent) : QObject(parent)
 {
-    m_poll.setInterval(200);
+    m_poll.setInterval(250);
     connect(&m_poll, &QTimer::timeout, this, &Client::poll);
 }
 
@@ -39,6 +39,7 @@ void Client::close()
 #endif
     m_udp.close();
     m_listening.clear();
+    m_refreshing = false;
     m_tree.clear();
     m_pushes = false;
     m_state = State::Idle;
@@ -115,7 +116,7 @@ void Client::open(const QString &host, quint16 httpPort)
             get(QStringLiteral("/"), [this](const QJsonDocument &tree) {
                 if (!m_tree.load(tree.object())) return fail(QStringLiteral("Not an OSCQuery tree"));
                 m_state = State::Ready;
-                if (!m_pushes) m_poll.start();
+                m_poll.start(); // also with a WebSocket, slowly: a device that says it pushes does not always (see poll())
                 emit ready();
             });
         });
@@ -128,7 +129,6 @@ void Client::openSocket(quint16 port)
     m_socket = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
     connect(m_socket, &QWebSocket::connected, this, [this]() {
         m_pushes = true;
-        m_poll.stop();
         for (const QString &path : std::as_const(m_listening))
             m_socket->sendTextMessage(QString::fromUtf8(QJsonDocument(QJsonObject{{"COMMAND", "LISTEN"}, {"DATA", path}}).toJson(QJsonDocument::Compact)));
     });
@@ -142,7 +142,6 @@ void Client::openSocket(quint16 port)
     });
     connect(m_socket, &QWebSocket::disconnected, this, [this]() {
         m_pushes = false;
-        if (m_state == State::Ready) m_poll.start();
     });
     m_socket->open(QUrl(QStringLiteral("ws://%1:%2/").arg(m_address.toString()).arg(port)));
 #else
@@ -152,11 +151,21 @@ void Client::openSocket(quint16 port)
 
 void Client::refresh()
 {
-    if (m_state != State::Ready) return;
+    if (m_state != State::Ready || m_refreshing) return;
+    m_refreshing = true;
     get(QStringLiteral("/"), [this](const QJsonDocument &doc) {
-        if (!m_tree.load(doc.object())) return;
+        m_refreshing = false;
+        RemoteTree fresh;
+        if (!fresh.load(doc.object()) || fresh.signature() == m_tree.signature()) return; // the same tree: nothing to say
+        m_tree = std::move(fresh);
         emit treeChanged();
-    });
+        for (const QString &path : std::as_const(m_listening)) { // its values again
+            get(path + QStringLiteral("?VALUE"), [this, path](const QJsonDocument &v) {
+                const QJsonArray value = v.object().value("VALUE").toArray();
+                if (!value.isEmpty() && m_tree.setValue(path, value)) emit valueChanged(path, value);
+            }, [] {});
+        }
+    }, [this] { m_refreshing = false; });
 }
 
 void Client::listen(const QString &path)
@@ -185,6 +194,9 @@ void Client::ignore(const QString &path)
 
 void Client::poll()
 {
+    // A device that pushes is asked once a second all the same: what it did not push, or a push that did not reach us, is found
+    if (++m_ticks % 12 == 0) refresh(); // the device's own changes (a layer added): its tree, every three seconds
+    if (m_pushes && ++m_slow % 4 != 0) return;
     for (const QString &path : std::as_const(m_listening)) {
         get(path + QStringLiteral("?VALUE"), [this, path](const QJsonDocument &doc) {
             const QJsonArray value = doc.object().value("VALUE").toArray();

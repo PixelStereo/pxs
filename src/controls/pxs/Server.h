@@ -10,7 +10,7 @@
 // Protocol (text frames, JSON), for those who want their own client:
 //   GET /info          {"pin":true|false}: whether a code is asked
 //   GET /ws?pin=<PIN>  upgrade to a WebSocket (no pin= when none is asked)
-//   server -> {"t":"controls","title":..,"list":[Control::wireJson()…]}   at connection, and when a control is added, removed or shaped
+//   server -> {"t":"controls","title":..,"show":true|false,"list":[Control::wireJson()…]}   at connection, and when a control is added, removed or shaped
 //   server -> {"t":"values","v":{"<id>":<number>|[numbers]}}              what changed
 //   client -> {"t":"set","id":"<id>","v":<number>}   {"t":"color","id":..,"rgb":[r,g,b]}   {"t":"point","id":..,"xy":[x,y]}
 //             {"t":"points","id":..,"v":[x1,y1,x2,y2…]}   {"t":"multi","id":..,"v":[…]}   {"t":"adsr","id":..,"v":[a,d,s,r]}
@@ -87,6 +87,7 @@ signals:
 protected:
     // Hooks: another page of the application (true: served as `html` under `csp`), another message of a client (true: taken), what to do
     // every 50 ms before the controls, a client gone
+    virtual bool hasShowPage() const { return false; } // the application serves a /show page: the page links to it
     virtual bool servePage(const QString &path, QByteArray *html, QByteArray *csp);
     virtual bool message(QTcpSocket *client, const QString &type, const QJsonObject &o);
     virtual void tick();

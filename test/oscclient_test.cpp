@@ -8,6 +8,10 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#ifdef PXS_HAS_WEBSOCKETS
+#include <QWebSocket>
+#include <QWebSocketServer>
+#endif
 #include <cstdio>
 
 static int failures = 0;
@@ -86,6 +90,18 @@ int main(int argc, char **argv)
     CHECK(client.write("/show/go", QJsonArray{3}));
     pump([&] { return cue == 3; });
     CHECK(cue == 3);
+    // The device's tree changes: the client says so, once
+    int changes = 0;
+    QObject::connect(&client, &Client::treeChanged, [&] { ++changes; });
+    client.refresh();
+    pump([&] { return false; }, 300);
+    CHECK(changes == 0); // the same tree
+    auto extra = std::make_unique<Parameter>("extra", "Extra", Parameter::Type::Float);
+    extra->range(0, 1).bind([] { return QVariant(0.0); }, [](const QVariant &) {});
+    tree.add("/mix/extra", std::move(extra));
+    client.refresh();
+    pump([&] { return changes > 0; });
+    CHECK(changes == 1 && client.tree().find("/mix/extra"));
     CHECK(!client.write("/nowhere", QJsonArray{1}) && !client.write("/mix/level", QJsonArray{1, 2}));
 
     // A control that is a view of the remote parameter
@@ -99,6 +115,45 @@ int main(int argc, char **argv)
     controls::fillBound(c, source);
     CHECK(c.value == 4.0);
     CHECK(controls::forParameter(source, 0, "/mix/on", 0)->kind == controls::Control::Kind::Toggle);
+
+
+#ifdef PXS_HAS_WEBSOCKETS
+    // A device that pushes, as NyxMap does: HOST_INFO says LISTEN and WS_PORT; LISTEN over the WebSocket, values come back as binary OSC
+    {
+        QWebSocketServer wss("fake", QWebSocketServer::NonSecureMode);
+        CHECK(wss.listen(QHostAddress::LocalHost, 0));
+        QStringList listened;
+        QWebSocket *peer = nullptr;
+        QObject::connect(&wss, &QWebSocketServer::newConnection, [&] {
+            peer = wss.nextPendingConnection();
+            QObject::connect(peer, &QWebSocket::textMessageReceived, [&](const QString &t) {
+                const QJsonObject o = QJsonDocument::fromJson(t.toUtf8()).object();
+                if (o.value("COMMAND").toString() == "LISTEN") listened << o.value("DATA").toString();
+            });
+        });
+        service.query().setExtensions(QJsonObject{{"ACCESS", true}, {"VALUE", true}, {"RANGE", true}, {"LISTEN", true}});
+        service.query().setHostInfoMore(QJsonObject{{"WS_PORT", int(wss.serverPort())}});
+        Client pushed;
+        bool up = false;
+        QObject::connect(&pushed, &Client::ready, [&] { up = true; });
+        pushed.open("127.0.0.1", service.httpPort());
+        pump([&] { return up && peer && pushed.pushes(); });
+        CHECK(up && peer && pushed.pushes());
+        QJsonArray got;
+        QObject::connect(&pushed, &Client::valueChanged, [&](const QString &path, const QJsonArray &v) { if (path == "/mix/level" && v.at(0).toDouble() > 5) got = v; });
+        pushed.listen("/mix/level");
+        pump([&] { return listened.contains("/mix/level"); });
+        CHECK(listened.contains("/mix/level"));
+        osc::Message m;
+        m.address = "/mix/level";
+        m.types = "f";
+        m.args << 7.0;
+        peer->sendBinaryMessage(osc::encode(m));
+        pump([&] { return !got.isEmpty(); });
+        CHECK(!got.isEmpty() && got.at(0).toDouble() == 7.0);
+        CHECK(pushed.tree().find("/mix/level")->value.at(0).toDouble() == 7.0);
+    }
+#endif
 
     // An unreachable device fails, once
     Client nobody;
