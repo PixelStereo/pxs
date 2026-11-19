@@ -26,6 +26,9 @@ public:
     OscService(Tree *tree, const QString &name, QObject *parent = nullptr);
     ~OscService() override;
 
+    // Reachable from this computer only (before start()): the UDP port and the HTTP / WebSocket port are bound to the loopback, nothing
+    // is announced on the network, and no page of another site may read the answers. Off by default: an application on a show network.
+    void setLocalOnly(bool on) { m_localOnly = on; }
     // oscPort/httpPort 0: any free port. False (with a log message) when one cannot be opened.
     bool start(quint16 oscPort, quint16 httpPort, bool announce = true);
     void stop();
@@ -61,6 +64,7 @@ private:
     MdnsResponder m_mdns;
     QList<QPair<QHostAddress, quint16>> m_targets, m_learned;
     bool m_learn = true;
+    bool m_localOnly = false;
     int m_observer = 0;
     std::atomic<int> m_webSockets{0}; // read by the thread that writes: nothing is built when nobody listens
     QTimer m_pathTimer;

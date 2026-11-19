@@ -56,6 +56,8 @@ struct ParamInfo {
     // (Seek To). A preset holds it as something to do when it is recalled, after its values
     bool action = false;
     bool unbounded = false;   // no range to tell (OSCQuery omits RANGE): the value is not limited to what is shown
+    QString unit;         // what it measures, as OSCQuery names it ("distance.m", "angle.degree", "gain.db", "time.ms"); empty: none said
+    QString extendedType; // what it is, as OSCQuery names it ("color.rgb.r", "position.cartesian.x", "filepath"); empty: said by its components
 
     bool isNumber() const { return type == Type::Float || type == Type::Int; }
     QString name() const; // its own name, without the category ("Rotation (°)")
@@ -76,6 +78,8 @@ public:
     Parameter &readOnly();
     Parameter &writeOnly();
     Parameter &unbounded() { m_info.unbounded = true; return *this; } // no declared range, whatever the defaults
+    Parameter &unit(const QString &name) { m_info.unit = name; return *this; }                  // OSCQuery UNIT (the proposal's units.md)
+    Parameter &extendedType(const QString &name) { m_info.extendedType = name; return *this; } // OSCQuery EXTENDED_TYPE (extended_types.md)
     Parameter &transient(); // read and written, never saved (a state of the show, not of a cue: on / off, solo)
     Parameter &animatable(bool on = true);
     Parameter &colorComponent(int component) { m_info.colorComponent = component; return *this; }

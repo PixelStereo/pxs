@@ -54,6 +54,11 @@ public:
     bool locked = false; // refuses every write (OSC, a mapping, the panel) until unlocked; the application's own code is not stopped
     std::function<bool()> reset; // puts the default back (a parameter with a default; empty: nothing to reset)
     QJsonArray range;    // one entry per argument: {"MIN", "MAX"} or {"VALS"}
+    // What a client may be told besides: one entry per argument (a string for each, "" for none), and the node's tags
+    QStringList extendedType; // EXTENDED_TYPE: what each argument is ("color.rgb.r")
+    QStringList unit;         // UNIT: what each argument measures ("distance.m")
+    QStringList tags;         // TAGS: for a client to search and filter by
+    std::function<QVariantList()> defaultValue; // DEFAULT_VALUE (libossia's name), what a reset puts back; empty: none
     QString clip;        // "both" when the range is enforced (CLIPMODE)
     std::function<QVariantList()> get;                 // the value, one entry per argument
     std::function<bool(const QVariantList &)> set;     // false: refused (a locked layer, a value that does not fit)
