@@ -71,6 +71,17 @@ header h1 { flex:1; margin:0 10px 0 0; font-size:16px; font-weight:600; white-sp
 .aline { fill:none; stroke:var(--a); stroke-width:3; stroke-linejoin:round; filter:drop-shadow(0 0 4px var(--a)); }
 .ahdl { fill:#f2f2f5; stroke:var(--a); stroke-width:3; }
 .alab { position:absolute; left:0; right:0; bottom:0; text-align:center; font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums; white-space:pre; }
+.meter { position:relative; width:100%; height:100%; min-height:40px; border-radius:10px; background:var(--panel2); overflow:hidden; }
+.meter .mfill { position:absolute; left:0; bottom:0; top:0; width:0; background:var(--a); opacity:.55; }
+.meter.v .mfill { right:0; top:auto; width:auto; height:0; }
+.meter .mpeak { position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--a); box-shadow:0 0 10px var(--a); }
+.meter.v .mpeak { left:0; right:0; top:auto; bottom:0; width:auto; height:3px; }
+.readout { width:100%; text-align:center; font-size:30px; font-weight:600; font-variant-numeric:tabular-nums; color:var(--a); }
+.graph { width:100%; height:100%; min-height:40px; border-radius:10px; background:var(--panel2); overflow:hidden; }
+.graph svg { width:100%; height:100%; display:block; }
+.gline { stroke:var(--a); }
+.led { width:34px; height:34px; border-radius:50%; margin:auto; background:var(--panel2); border:1px solid var(--line); }
+.led.on { background:var(--a); box-shadow:0 0 18px var(--a); }
 .num { display:flex; align-items:center; width:100%; }
 .num button { width:42px; height:42px; border-radius:50%; border:1px solid var(--line); background:var(--panel2); color:var(--text); font-size:22px; line-height:1; }
 .num output { flex:1; text-align:center; font-size:26px; font-weight:600; font-variant-numeric:tabular-nums; }
@@ -222,8 +233,9 @@ inline constexpr char kScriptA[] = R"JS(
 // B: the widgets, in SVG and CSS. Each takes its control and `io` (begin, input(v), end) and gives { el, set(v) }
 inline constexpr char kScriptB[] = R"JS(
   const wDefault = { slider: 'vfader', toggle: 'switch', choice: 'buttons', button: 'hold', color: 'picker', pad: 'pad', adsr: 'adsr', multi: 'multi', points: 'pad' };
-  const wChoices = { slider: ['fader', 'vfader', 'knob', 'number', 'slim', 'vslim'], toggle: ['switch'], choice: ['buttons', 'menu'], button: ['hold', 'tap'], color: ['picker'], pad: ['pad'], adsr: ['adsr'], multi: ['multi', 'hmulti'], points: ['pad'] };
-  const wName = { fader: 'Fader', vfader: 'Vertical fader', slim: 'Slim fader', vslim: 'Slim vertical fader', knob: 'Encoder', number: 'Number', switch: 'Switch', buttons: 'Buttons', menu: 'Menu', hold: 'Hold button', tap: 'Tap button', picker: 'Color', pad: 'XY pad', adsr: 'ADSR', multi: 'Multi-slider', hmulti: 'Horizontal multi-slider' };
+  const wChoices = { slider: ['fader', 'vfader', 'knob', 'number', 'slim', 'vslim', 'meter', 'hmeter', 'readout', 'graph'], toggle: ['switch', 'led'], choice: ['buttons', 'menu', 'readout'], button: ['hold', 'tap'], color: ['picker'], pad: ['pad'], adsr: ['adsr'], multi: ['multi', 'hmulti'], points: ['pad'] };
+  const wName = { fader: 'Fader', vfader: 'Vertical fader', slim: 'Slim fader', vslim: 'Slim vertical fader', knob: 'Encoder', number: 'Number', switch: 'Switch', buttons: 'Buttons', menu: 'Menu', hold: 'Hold button', tap: 'Tap button', picker: 'Color', pad: 'XY pad', adsr: 'ADSR', multi: 'Multi-slider', hmulti: 'Horizontal multi-slider', meter: 'Meter', hmeter: 'Horizontal meter', readout: 'Readout', graph: 'Graph', led: 'LED' };
+  const isView = c => ['meter', 'hmeter', 'readout', 'graph', 'led'].indexOf(widgetOf(c)) >= 0; // a view: it shows the value, it does not set it
   const widgetOf = c => (wChoices[c.kind] || []).indexOf(c.widget) >= 0 ? c.widget : wDefault[c.kind];
   // The big one, as TouchOSC and Lemur have it: the whole tile is the fader, a finger anywhere puts the level there, and the level is
   // the filled part, ended by a bright edge. Nothing small to catch
@@ -269,6 +281,10 @@ inline constexpr char kScriptB[] = R"JS(
   }
   function widget(c, io) {
     const w = widgetOf(c);
+    if (w === 'meter' || w === 'hmeter') return meter(c, w === 'meter');
+    if (w === 'readout') return readout(c);
+    if (w === 'graph') return graph(c);
+    if (w === 'led') return led(c);
     if (c.kind === 'slider') return w === 'knob' ? knob(c, io) : w === 'number' ? number(c, io) : w === 'slim' || w === 'vslim' ? fader(c, io, w === 'vslim') : slab(c, io, w === 'vfader');
     if (c.kind === 'toggle') { const b = el('button', 'sw', c.name); b.onclick = () => { io.begin(); io.input(values[c.id] >= 0.5 ? 0 : 1); io.end(); }; return { el: b, set: v => b.classList.toggle('on', v >= 0.5) }; }
     if (c.kind === 'button') {
@@ -306,6 +322,28 @@ inline constexpr char kScriptB[] = R"JS(
 
 // B2: more widgets (a literal stays under the compilers' limit)
 inline constexpr char kScriptB2[] = R"JS(
+  // The views: they show a value (a meter with a peak that falls back, a readout, a graph of the last seconds, a lamp) and set nothing
+  function meter(c, vertical) {
+    const root = el('div', 'meter' + (vertical ? ' v' : '')), fill = el('div', 'mfill'), peak = el('div', 'mpeak'), span = (c.max - c.min) || 1;
+    root.appendChild(fill); root.appendChild(peak);
+    let pk = 0;
+    return { el: root, set: x => {
+      const p = clamp((x - c.min) / span, 0, 1); pk = Math.max(p, pk - 0.012);
+      fill.style[vertical ? 'height' : 'width'] = (p * 100) + '%'; peak.style[vertical ? 'bottom' : 'left'] = (pk * 100) + '%';
+    } };
+  }
+  function readout(c) {
+    const out = el('div', 'readout');
+    return { el: out, set: x => { out.textContent = c.kind === 'choice' ? (c.choices || [])[Math.round(x)] || '' : fmt(c, x); } };
+  }
+  function graph(c) {
+    const root = el('div', 'graph'), s = sv('svg', { viewBox: '0 0 100 40', preserveAspectRatio: 'none' }, root), line = sv('polyline', { fill: 'none', 'stroke-width': '1.5', 'vector-effect': 'non-scaling-stroke' }, s);
+    line.setAttribute('class', 'gline');
+    const span = (c.max - c.min) || 1, hist = []; let at = 0;
+    const draw = () => line.setAttribute('points', hist.map((h, i) => (i * 100 / 119).toFixed(1) + ',' + (38 - h * 36).toFixed(1)).join(' '));
+    return { el: root, set: x => { hist.push(clamp((x - c.min) / span, 0, 1)); if (hist.length > 120) hist.shift(); draw(); } };
+  }
+  function led(c) { const root = el('div', 'led'); return { el: root, set: x => root.classList.toggle('on', x >= 0.5) }; }
   // A pad with several points: each finger takes the nearest free point and moves it (as many at once as there are fingers)
   function pointsPad(c, io) {
     const pad = el('div', 'pad'), n = c.count, span = (c.max - c.min) || 1, dots = [], held = {};
@@ -369,8 +407,8 @@ inline constexpr char kScriptB2[] = R"JS(
 
 // C: pages, the grid, the tiles, Edit mode (drag, resize)
 inline constexpr char kScriptC[] = R"JS(
-  const sizeOf = c => { const w = widgetOf(c); return c.kind === 'group' ? [12, 1] : c.kind === 'pad' || c.kind === 'points' ? [5, 5] : c.kind === 'adsr' ? [6, 3] : c.kind === 'multi' ? (widgetOf(c) === 'hmulti' ? [6, 5] : [8, 4]) : c.kind === 'choice' ? [6, 2] : c.kind === 'slider' ? (w === 'knob' ? [3, 3] : w === 'vfader' ? [2, 5] : w === 'vslim' ? [1, 5] : w === 'number' ? [3, 2] : w === 'slim' ? [4, 2] : w === 'fader' ? [4, 2] : [2, 5]) : [3, 2]; };
-  const minOf = c => c.kind === 'pad' ? [2, 2] : c.kind === 'slider' && widgetOf(c) === 'knob' ? [2, 2] : c.kind === 'slider' && (widgetOf(c) === 'vfader' || widgetOf(c) === 'vslim') ? [1, 3] : c.kind === 'group' ? [2, 1] : [2, 1];
+  const sizeOf = c => { const w = widgetOf(c); return c.kind === 'group' ? [12, 1] : c.kind === 'pad' || c.kind === 'points' ? [5, 5] : c.kind === 'adsr' ? [6, 3] : c.kind === 'multi' ? (widgetOf(c) === 'hmulti' ? [6, 5] : [8, 4]) : c.kind === 'choice' ? [6, 2] : c.kind === 'slider' ? (w === 'meter' ? [1, 5] : w === 'hmeter' ? [4, 1] : w === 'graph' ? [4, 2] : w === 'readout' ? [3, 2] : w === 'knob' ? [3, 3] : w === 'vfader' ? [2, 5] : w === 'vslim' ? [1, 5] : w === 'number' ? [3, 2] : w === 'slim' ? [4, 2] : w === 'fader' ? [4, 2] : [2, 5]) : [3, 2]; };
+  const minOf = c => isView(c) ? [1, 1] : c.kind === 'pad' ? [2, 2] : c.kind === 'slider' && widgetOf(c) === 'knob' ? [2, 2] : c.kind === 'slider' && (widgetOf(c) === 'vfader' || widgetOf(c) === 'vslim') ? [1, 3] : c.kind === 'group' ? [2, 1] : [2, 1];
   const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
   const topOf = c => { let p = c.group; while (p && byId[p] && byId[p].group) p = byId[p].group; return p || 0; };
   function pages() {
