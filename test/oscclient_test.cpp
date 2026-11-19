@@ -108,6 +108,18 @@ int main(int argc, char **argv)
     client.refresh();
     pump([&] { return changes > 0; });
     CHECK(changes == 1 && client.tree().find("/mix/extra"));
+    // This device says LISTEN (OscService serves the WebSocket): what it changes is pushed, and a node it makes is told with PATH_CHANGED
+    CHECK(client.pushes());
+    level = 2.5;
+    heard = QJsonArray();
+    tree.changed("/mix/level");
+    pump([&] { return !heard.isEmpty(); });
+    CHECK(!heard.isEmpty() && heard.at(0).toDouble() == 2.5);
+    auto extra2 = std::make_unique<Parameter>("extra2", "Extra 2", Parameter::Type::Float);
+    extra2->range(0, 1).bind([] { return QVariant(0.0); }, [](const QVariant &) {});
+    tree.add("/mix/extra2", std::move(extra2));
+    pump([&] { return changes > 1; }, 1500); // before the client's own look at the tree (every 3 s), no refresh() asked
+    CHECK(changes == 2 && client.tree().find("/mix/extra2"));
     CHECK(!client.write("/nowhere", QJsonArray{1}) && !client.write("/mix/level", QJsonArray{1, 2}));
 
     // A control that is a view of the remote parameter
