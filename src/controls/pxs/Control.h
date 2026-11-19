@@ -18,6 +18,27 @@
 
 namespace pxs::controls {
 
+// What moves a control's numbers once the hand has let go (Server.h runs it): friction slows what was thrown, attraction pulls it back to
+// the control's default (a spring), bounce is what is kept of the speed against the ends of the range (0: it stops there)
+struct Physics {
+    bool on = false;
+    double friction = 3;  // 0..30, a rate per second
+    double attract = 0;   // 0..200, the spring's strength
+    double bounce = 0.5;  // 0..1
+    bool operator==(const Physics &o) const { return on == o.on && friction == o.friction && attract == o.attract && bounce == o.bounce; }
+    QJsonObject toJson() const { return QJsonObject{{"on", on}, {"friction", friction}, {"attract", attract}, {"bounce", bounce}}; }
+    void apply(const QJsonObject &p)
+    {
+        auto number = [&](const char *key, double lo, double hi, double &into) {
+            if (p.value(key).isDouble() && std::isfinite(p.value(key).toDouble())) into = std::clamp(p.value(key).toDouble(), lo, hi);
+        };
+        if (p.value("on").isBool()) on = p.value("on").toBool();
+        number("friction", 0, 30, friction);
+        number("attract", 0, 200, attract);
+        number("bounce", 0, 1, bounce);
+    }
+};
+
 struct Control {
     enum class Kind { Slider = 0, Toggle, Choice, Button, Color, Pad, Group, Adsr, Multi, Points };
     static constexpr int kKindCount = 10;
@@ -35,6 +56,7 @@ struct Control {
     // of its gesture (a Slider: 1 linear, above 1 fine at the low end, below 1 fine at the high end) and its accent color ("#rrggbb")
     QString widget, accent;
     double curve = 1;
+    Physics physics; // Slider, Pad, Multi, Points: what moves its numbers after a gesture
     // A view of a parameter: where it is (the application's own scope: a layer in NyxMap, a device in an explorer; 0: the application's
     // own) and its address there. The control has no value of its own: it shows the parameter and sets it, so that a change made anywhere
     // shows on the page too
@@ -104,6 +126,7 @@ struct Control {
         }
         return out;
     }
+    bool physical() const { return kind == Kind::Slider || kind == Kind::Pad || kind == Kind::Multi || kind == Kind::Points; }
     static QString kindKey(Kind k)
     {
         static const char *const keys[] = {"slider", "toggle", "choice", "button", "color", "pad", "group", "adsr", "multi", "points"};
@@ -152,6 +175,7 @@ struct Control {
         if (!widget.isEmpty()) o["widget"] = widget;
         if (!accent.isEmpty()) o["accent"] = accent;
         if (curve != 1) o["curve"] = curve;
+        if (physical()) o["physics"] = physics.toJson();
         if (gw > 0 && gh > 0) o["layout"] = QJsonObject{{"x", gx}, {"y", gy}, {"w", gw}, {"h", gh}};
         switch (kind) {
         case Kind::Group: o["columns"] = columns; break;
@@ -220,6 +244,7 @@ struct Control {
         if (p.value("name").isString()) name = p.value("name").toString().left(60);
         if (p.contains("widget")) widget = cleanWidget(p.value("widget").toString());
         if (p.contains("accent")) accent = cleanAccent(p.value("accent").toString());
+        if (physical() && p.value("physics").isObject()) physics.apply(p.value("physics").toObject());
         if (kind == Kind::Adsr) {
             number("max", max);
             max = std::clamp(max, 0.1, 60.0);
@@ -259,6 +284,7 @@ struct Control {
         if (!widget.isEmpty()) o["widget"] = widget;
         if (!accent.isEmpty()) o["accent"] = accent;
         if (curve != 1) o["curve"] = curve;
+        if (physical()) o["physics"] = physics.toJson();
         if (gw > 0 && gh > 0) o["layout"] = QJsonObject{{"x", gx}, {"y", gy}, {"w", gw}, {"h", gh}};
         switch (kind) {
         case Kind::Group: o["columns"] = columns; break;
@@ -340,6 +366,7 @@ struct Control {
         c.widget = cleanWidget(o.value("widget").toString());
         c.accent = cleanAccent(o.value("accent").toString());
         c.curve = std::isfinite(o.value("curve").toDouble(1)) ? std::clamp(o.value("curve").toDouble(1), 0.1, 10.0) : 1.0;
+        if (const QJsonObject ph = o.value("physics").toObject(); !ph.isEmpty()) c.physics.apply(ph);
         if (const QJsonObject l = o.value("layout").toObject(); l.value("w").toInt() > 0 && l.value("h").toInt() > 0) {
             c.gw = std::clamp(l.value("w").toInt(), 1, kGridColumns);
             c.gh = std::clamp(l.value("h").toInt(), 1, kGridRowsMax);

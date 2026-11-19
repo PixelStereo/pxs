@@ -1,4 +1,5 @@
 #include "pxs/Server.h"
+#include "pxs/Physics.h"
 #include "pxs/ControlsPage.h"
 #include "WebSocketFrame.h"
 
@@ -74,6 +75,9 @@ Server::Server(Backend *backend, QObject *parent) : QObject(parent), m_backend(b
 {
     m_timer.setInterval(50);
     connect(&m_timer, &QTimer::timeout, this, &Server::push);
+    m_physics.setInterval(16);
+    connect(&m_physics, &QTimer::timeout, this, &Server::stepPhysics);
+    m_clock.start();
 }
 
 Server::~Server() { stop(); }
@@ -340,6 +344,12 @@ void Server::onFrame(Client &c, int opcode, const QByteArray &payload)
                 const QJsonObject p = it.value().toObject();
                 places.insert(it.key().toULongLong(), {p.value("x").toInt(), p.value("y").toInt(), p.value("w").toInt(1), p.value("h").toInt(1)});
             }
+            bool changed = false;
+            for (const Control &control : m_backend->controls()) {
+                const auto place = places.find(control.id);
+                changed |= place != places.end() && *place != std::array<int, 4>{control.gx, control.gy, control.gw, control.gh};
+            }
+            if (changed) checkpoint(QStringLiteral("layout"));
             if (m_backend->setLayouts(places)) emit layoutEdited();
             return;
         }
@@ -347,13 +357,23 @@ void Server::onFrame(Client &c, int opcode, const QByteArray &payload)
             const quint64 target = o.value("id").toString().toULongLong();
             if (!target) return;
             if (type == QLatin1String("remove")) {
+                checkpoint();
                 if (m_backend->remove(target)) emit layoutEdited();
                 return;
             }
             std::optional<Control> found = m_backend->control(target);
             if (!found) return;
             found->applyProps(o.value("props").toObject());
+            checkpoint(QStringLiteral("edit%1").arg(target));
             if (m_backend->update(target, *found)) emit layoutEdited();
+            return;
+        }
+        if (type == QLatin1String("undo") || type == QLatin1String("redo")) {
+            if (type == QLatin1String("undo") ? undo() : redo()) emit layoutEdited();
+            return;
+        }
+        if (type == QLatin1String("rel")) {
+            released(o.value("id").toString().toULongLong());
             return;
         }
         const bool setting = type == QLatin1String("set") || type == QLatin1String("color") || type == QLatin1String("point") || type == QLatin1String("adsr") ||
@@ -387,7 +407,10 @@ void Server::onFrame(Client &c, int opcode, const QByteArray &payload)
             const QJsonArray rgb = o.value("rgb").toArray();
             moved = rgb.size() == 3 && m_backend->setColor(id, rgb[0].toDouble(), rgb[1].toDouble(), rgb[2].toDouble());
         }
-        if (moved) emit controlMoved();
+        if (moved) {
+            touched(id);
+            emit controlMoved();
+        }
         break;
     }
     case websocket::Close:
@@ -396,6 +419,125 @@ void Server::onFrame(Client &c, int opcode, const QByteArray &payload)
         break;
     case websocket::Ping: send(c.socket, websocket::encode(websocket::Pong, payload.left(125))); break;
     default: break;
+    }
+}
+
+// Undo goes back over what changes the page (its controls, their places and settings), not over the values played
+void Server::checkpoint(const QString &what)
+{
+    const qint64 now = m_clock.elapsed();
+    if (!what.isEmpty() && what == m_lastWhat && now - m_lastAt < 1500) {
+        m_lastAt = now; // the same thing again (a name typed, a tile dragged): one step
+        return;
+    }
+    m_lastWhat = what;
+    m_lastAt = now;
+    m_undo.push_back(m_backend->controls());
+    if (m_undo.size() > 50) m_undo.erase(m_undo.begin());
+    m_redo.clear();
+}
+
+bool Server::undo()
+{
+    if (m_undo.empty()) return false;
+    std::vector<Control> before = m_backend->controls();
+    if (!m_backend->restore(m_undo.back())) return false;
+    m_undo.pop_back();
+    m_redo.push_back(std::move(before));
+    m_lastWhat.clear();
+    return true;
+}
+
+bool Server::redo()
+{
+    if (m_redo.empty()) return false;
+    std::vector<Control> before = m_backend->controls();
+    if (!m_backend->restore(m_redo.back())) return false;
+    m_redo.pop_back();
+    m_undo.push_back(std::move(before));
+    m_lastWhat.clear();
+    return true;
+}
+
+// A gesture's messages give the control a speed (smoothed); when the hand lets go, its physics goes on from there
+void Server::touched(quint64 id)
+{
+    const std::optional<Control> c = m_backend->control(id);
+    if (!c || !c->physics.on || !c->physical()) {
+        m_bodies.remove(id);
+        return;
+    }
+    Body &b = m_bodies[id];
+    const std::vector<double> now = c->numbers();
+    const qint64 t = m_clock.elapsed();
+    const double dt = double(t - b.movedAt) / 1000.0;
+    if (b.last.size() == now.size() && dt > 0.001 && dt < 0.15 && c->max > c->min) {
+        b.v.resize(now.size(), 0.0);
+        for (size_t i = 0; i < now.size(); ++i) b.v[i] = 0.5 * b.v[i] + 0.5 * (now[i] - b.last[i]) / (c->max - c->min) / dt;
+    } else {
+        b.v.assign(now.size(), 0.0);
+    }
+    b.last = now;
+    b.movedAt = t;
+    b.held = true;
+    b.moving = false;
+}
+
+void Server::released(quint64 id)
+{
+    const std::optional<Control> c = m_backend->control(id);
+    auto found = m_bodies.find(id);
+    if (!c || !c->physics.on || !c->physical()) {
+        m_bodies.remove(id);
+        return;
+    }
+    if (found == m_bodies.end()) found = m_bodies.insert(id, Body{c->numbers(), std::vector<double>(c->numbers().size(), 0.0), 0, false, false});
+    Body &b = *found;
+    if (m_clock.elapsed() - b.movedAt > 80) std::fill(b.v.begin(), b.v.end(), 0.0); // the hand had stopped: nothing is thrown
+    b.held = false;
+    b.moving = true;
+    if (!m_physics.isActive()) m_physics.start();
+}
+
+void Server::stepPhysics()
+{
+    bool any = false;
+    const double dt = 0.016;
+    for (auto it = m_bodies.begin(); it != m_bodies.end();) {
+        Body &b = it.value();
+        if (b.held || !b.moving) {
+            ++it;
+            continue;
+        }
+        const std::optional<Control> c = m_backend->control(it.key());
+        if (!c || !c->physics.on) {
+            it = m_bodies.erase(it);
+            continue;
+        }
+        std::vector<double> x = c->numbers();
+        b.v.resize(x.size(), 0.0);
+        b.moving = physics::step(*c, x, b.v, dt);
+        bool ok = true;
+        switch (c->kind) {
+        case Control::Kind::Slider: ok = m_backend->setValue(c->id, x[0]); break;
+        case Control::Kind::Pad: ok = x.size() == 2 && m_backend->setPoint(c->id, x[0], x[1]); break;
+        case Control::Kind::Multi: ok = m_backend->setMulti(c->id, x); break;
+        case Control::Kind::Points: ok = m_backend->setPoints(c->id, x); break;
+        default: ok = false; break;
+        }
+        if (!ok) b.moving = false;
+        b.last = x;
+        any |= b.moving;
+        if (!b.moving) {
+            it = m_bodies.erase(it);
+            continue;
+        }
+        ++it;
+    }
+    if (!any) {
+        bool pending = false;
+        for (const Body &b : std::as_const(m_bodies)) pending |= b.moving;
+        if (!pending) m_physics.stop();
     }
 }
 

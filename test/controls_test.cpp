@@ -1,6 +1,7 @@
 // The model of a control and its page: kinds, JSON, bounds, what a remote page may ask for.
 #include <pxs/Control.h>
 #include <pxs/ControlsPage.h>
+#include <pxs/Physics.h>
 #include <QCryptographicHash>
 #include <cmath>
 #include <cstdio>
@@ -61,6 +62,38 @@ int main()
         Control t;
         t.kind = Control::Kind::Toggle;
         check(p.numberSources().size() == 6 && s.numberSources().size() == 1 && t.numberSources().empty(), "a control says which numbers it offers");
+    }
+    // Physics: a thrown slider slows down and stops, bounces on the end, a spring brings it back to its default; and it is kept in JSON
+    {
+        Control c;
+        c.kind = Control::Kind::Slider;
+        c.min = 0, c.max = 10, c.def = 5, c.value = 2;
+        c.physics = {true, 3, 0, 0};
+        std::vector<double> x{2}, v{0.5};
+        int steps = 0;
+        while (pxs::controls::physics::step(c, x, v, 0.016) && steps < 2000) ++steps;
+        check(steps > 5 && steps < 2000 && x[0] > 2 && x[0] <= 10 && v[0] == 0, "a thrown slider slows down and stops");
+        c.physics = {true, 0, 0, 1};
+        x = {9.9}, v = {1.0};
+        pxs::controls::physics::step(c, x, v, 0.016);
+        pxs::controls::physics::step(c, x, v, 0.016);
+        check(x[0] <= 10 && v[0] < 0, "it bounces on the end of its range");
+        c.physics = {true, 6, 40, 0};
+        x = {0}, v = {0};
+        steps = 0;
+        while (pxs::controls::physics::step(c, x, v, 0.016) && steps < 5000) ++steps;
+        check(steps < 5000 && near(x[0], 5), "a spring brings it back to its default");
+        c.physics = {true, 7, 12, 0.25};
+        const Control again = Control::fromJson(c.toJson());
+        check(again.physics == c.physics, "its physics goes through JSON");
+        Control t;
+        t.kind = Control::Kind::Toggle;
+        t.applyProps(QJsonObject{{"physics", QJsonObject{{"on", true}}}});
+        check(!t.physics.on, "a toggle has no physics");
+        Control s;
+        s.kind = Control::Kind::Slider;
+        s.applyProps(QJsonObject{{"physics", QJsonObject{{"on", true}, {"friction", 1e9}, {"bounce", -3}}}});
+        check(s.physics.on && s.physics.friction == 30 && s.physics.bounce == 0, "what a page asks of the physics is kept within bounds");
     }
     // The page: the pieces stay under a compiler's limit and the script is whole
     {
