@@ -118,10 +118,19 @@ int main()
         p.kind = Control::Kind::Points;
         p.count = 1;
         p.boundScope = 3;
-        p.applyProps(QJsonObject{{"balls", QJsonArray{QJsonObject{{"x", "/a/x"}, {"y", "/a/y"}, {"minX", -5}, {"maxX", 5}, {"accent", "#E5564A"}, {"physics", QJsonObject{{"mode", 1}}}}}}});
+        p.applyProps(QJsonObject{{"balls", QJsonArray{QJsonObject{{"x", "/a/x"}, {"y", "/a/y"}, {"minX", -5}, {"maxX", 5}, {"accent", "#E5564A"}, {"own", true}, {"physics", QJsonObject{{"mode", 1}}}}}}});
         check(p.balls.size() == 1 && p.balls[0].px == "/a/x" && p.balls[0].minX == -5 && p.balls[0].accent == "#e5564a" && p.moving(), "a ball is set from the page");
         p.applyProps(QJsonObject{{"balls", QJsonArray{p.balls[0].toJson(), QJsonObject{}}}});
         check(p.count == 2 && p.balls.size() == 2 && p.balls[1].px.isEmpty() && p.balls[1].minX == -5 && p.balls[1].physics.mode == 1, "a ball added copies the last one, not its addresses");
+        { // the control's physics is for all its balls, unless a ball has its own
+            Control q = p;
+            q.balls[0].own = q.balls[1].own = false;
+            check(!q.moving(), "a ball with no physics of its own follows the control's");
+            q.physics.mode = 2;
+            check(q.moving() && q.physicsOf(0).mode == 2 && q.physicsOf(1).mode == 2, "the control's physics is for all its balls");
+            q.balls[1].own = true;
+            check(q.physicsOf(1).mode == 1 && q.physicsOf(0).mode == 2, "a ball can have one of its own");
+        }
         p.applyProps(QJsonObject{{"balls", QJsonArray{QJsonObject{{"x", "nonsense"}}}}});
         check(p.balls.size() == 1 && p.balls[0].px.isEmpty(), "an address is a path or nothing");
         p.balls[0].px = "/q";

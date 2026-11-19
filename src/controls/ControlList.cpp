@@ -414,6 +414,7 @@ std::optional<Control> forParameters(const ParameterSource &source, quint64 scop
     if (!axis(source, scope, pathX, &x, &xlo, &xhi) || !axis(source, scope, pathY, &y, &ylo, &yhi)) return std::nullopt;
     if (!(x.access & ParamInfo::Write) || !(y.access & ParamInfo::Write) || pathX == pathY) return std::nullopt;
     Control c;
+    c.physics.tension = 0; // its balls are thrown
     c.kind = Kind::Points; // a pad of one ball, bound to the two parameters; balls can be added to it
     c.group = group;
     c.name = x.name() + QStringLiteral(" / ") + y.name();

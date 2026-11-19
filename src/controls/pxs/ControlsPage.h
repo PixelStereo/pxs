@@ -33,7 +33,8 @@ header h1 { flex:1; margin:0 10px 0 0; font-size:16px; font-weight:600; white-sp
 .tile.sec .face { background:transparent; border:0; border-bottom:1px solid var(--line); border-radius:0; padding:12px 2px 0; }
 .sec .hd { font-size:13px; }
 .hd { display:flex; justify-content:space-between; align-items:baseline; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); white-space:nowrap; }
-.dest { font-size:10px; line-height:1.25; color:var(--dim); opacity:.8; overflow:hidden; word-break:break-all; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-family:ui-monospace,Menlo,monospace; }
+.tile .face .hd span:first-child { font-size:15px; text-transform:none; letter-spacing:0; color:var(--text); font-weight:600; }
+.dest { font-size:9px; line-height:1.25; color:var(--dim); opacity:.8; overflow:hidden; word-break:break-all; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-family:ui-monospace,Menlo,monospace; }
 .hd span { overflow:hidden; text-overflow:ellipsis; }
 .hd b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:0; margin-left:8px; }
 .bd { flex:1; min-height:0; position:relative; display:flex; align-items:center; justify-content:center; }
@@ -240,7 +241,8 @@ inline constexpr char kScriptB[] = R"JS(
   const wName = { fader: 'Fader', vfader: 'Vertical fader', slim: 'Slim fader', vslim: 'Slim vertical fader', knob: 'Encoder', number: 'Number', switch: 'Switch', buttons: 'Buttons', menu: 'Menu', hold: 'Hold button', tap: 'Tap button', picker: 'Color', pad: 'XY pad', adsr: 'ADSR', multi: 'Multi-slider', hmulti: 'Horizontal multi-slider', meter: 'Meter', hmeter: 'Horizontal meter', readout: 'Readout', graph: 'Graph', led: 'LED' };
   const isView = c => ['meter', 'hmeter', 'readout', 'graph', 'led'].indexOf(widgetOf(c)) >= 0; // a view: it shows the value, it does not set it
   // A control with a physics shows where the physics has put it, not where the hand is: the hand sets where it should go
-  const physOf = c => !!(c.physics && c.physics.mode > 0) || !!(c.balls && c.balls.some(b => b.physics && b.physics.mode > 0));
+  const ballPhys = (c, b) => (b && b.own) ? b.physics : c.physics; // a ball's own physics, or the control's
+  const physOf = c => c.kind === 'points' && c.balls && c.balls.length ? c.balls.some(b => { const p = ballPhys(c, b); return p && p.mode > 0; }) : !!(c.physics && c.physics.mode > 0);
   const widgetOf = c => (wChoices[c.kind] || []).indexOf(c.widget) >= 0 ? c.widget : wDefault[c.kind];
   // The big one, as TouchOSC and Lemur have it: the whole tile is the fader, a finger anywhere puts the level there, and the level is
   // the filled part, ended by a bright edge. Nothing small to catch
@@ -356,7 +358,7 @@ inline constexpr char kScriptB2[] = R"JS(
   function pointsPad(c, io) {
     const pad = el('div', 'pad'), n = c.count, dots = [], held = {}, balls = c.balls || [];
     const rg = i => balls[i] ? [balls[i].minX, balls[i].maxX, balls[i].minY, balls[i].maxY] : [c.min, c.max, c.min, c.max];
-    const physical = i => balls[i] && balls[i].physics && balls[i].physics.mode > 0; // its dot shows where the physics has put it, not the hand
+    const physical = i => { const p = ballPhys(c, balls[i]); return !!(p && p.mode > 0); }; // its dot shows where the physics has put it, not the hand
     let v = [].concat.apply([], c.points || []); while (v.length < n * 2) { const r = rg(v.length >> 1); v.push((v.length & 1 ? r[2] + r[3] : r[0] + r[1]) / 2); }
     for (let i = 0; i < n; i++) {
       const d = el('i', 'pt', String(i + 1)); d.style.setProperty('--h', String(Math.round((190 + 62 * i) % 360)));
@@ -552,9 +554,9 @@ inline constexpr char kScriptD[] = R"JS(
   function closeSheet() { flush(); sheetId = 0; $('#sheet').classList.remove('open'); selectTile(0); }
   // The physics of a number, as Lemur has it: Interpolate (it glides to the hand) or Mass-Spring (a spring to the hand; once let go it goes on by
   // itself with the push it got: friction, the bounce on the walls)
-  function physFields(host, ph, save, widget) {
+  function physFields(host, ph, save, widget, title) {
     const p = Object.assign({}, ph), box = el('div');
-    host.appendChild(el('label', '', 'Physics'));
+    host.appendChild(el('label', '', title || 'Physics'));
     const mode = el('select'); [['None', 0], ['Interpolate (glides to the hand)', 1], ['Mass-Spring (thrown by the finger)', 2]].forEach(m => { const o = el('option', '', m[0]); o.value = m[1]; mode.appendChild(o); });
     mode.value = p.mode || 0; host.appendChild(mode); host.appendChild(box);
     const knob = (label, key, lo, hi, root) => { box.appendChild(el('label', '', label)); const r = el('input'), h = el('div', 'hint'); r.type = 'range'; r.min = 0; r.max = 1000;
@@ -580,6 +582,7 @@ inline constexpr char kScriptD[] = R"JS(
     plus.onclick = () => { if (balls.length >= 16) return; balls.push(Object.assign({}, JSON.parse(JSON.stringify(balls[sel])), { x: '', y: '', name: '' })); sel = balls.length - 1; save(); fill(); show(); };
     minus.onclick = () => { if (balls.length < 2) return; balls.splice(sel, 1); sel = Math.min(sel, balls.length - 1); save(); fill(); show(); };
     menu.onchange = () => { sel = Number(menu.value); show(); };
+    physFields(sh, c.physics || {}, ph => push({ physics: ph }), key => { flush(); send({ t: 'physicsWidget', id: c.id, key }); }, 'Physics of all the balls');
     bar.appendChild(menu); bar.appendChild(plus); bar.appendChild(minus); sh.appendChild(el('label', '', 'Balls')); sh.appendChild(bar); sh.appendChild(box);
     const show = () => { const b = balls[sel]; box.textContent = '';
       const add = (l, n) => { box.appendChild(el('label', '', l)); box.appendChild(n); };
@@ -589,7 +592,11 @@ inline constexpr char kScriptD[] = R"JS(
       r1.appendChild(cell('X min', numeric(b.minX, v => { b.minX = v; save(); }))); r1.appendChild(cell('X max', numeric(b.maxX, v => { b.maxX = v; save(); })));
       r2.appendChild(cell('Y min', numeric(b.minY, v => { b.minY = v; save(); }))); r2.appendChild(cell('Y max', numeric(b.maxY, v => { b.maxY = v; save(); }))); box.appendChild(r1); box.appendChild(r2);
       const sw = el('div', 'sw8'); accents.forEach(a => { const k = el('button', (b.accent || '') === a ? 'on' : '', ''); k.style.background = a || '#34343b'; k.onclick = () => { b.accent = a; save(); sw.querySelectorAll('button').forEach(o => o.classList.remove('on')); k.classList.add('on'); }; sw.appendChild(k); });
-      add('Color', sw); physFields(box, b.physics || {}, ph => { b.physics = ph; save(); }, key => { flush(); send({ t: 'physicsWidget', id: c.id, key: (sel + 1) + '.' + key }); });
+      add('Color', sw);
+      const own = el('label', 'chk'), cb = el('input'); cb.type = 'checkbox'; cb.checked = !!b.own; own.appendChild(cb); own.appendChild(document.createTextNode(' Its own physics (instead of the pad\'s)')); box.appendChild(own);
+      const mine = el('div'); box.appendChild(mine);
+      const showOwn = () => { mine.textContent = ''; if (b.own) physFields(mine, b.physics || {}, ph => { b.physics = ph; save(); }, key => { flush(); send({ t: 'physicsWidget', id: c.id, key: (sel + 1) + '.' + key }); }, 'Physics of this ball'); };
+      cb.onchange = () => { b.own = cb.checked; if (b.own && !b.physics) b.physics = Object.assign({}, c.physics); save(); showOwn(); }; showOwn();
     };
     fill(); show();
   }

@@ -58,11 +58,11 @@ struct Ball {
     QString name, px, py, accent;
     double minX = 0, maxX = 1, minY = 0, maxY = 1;
     Physics physics;
-    Ball() { physics.tension = 0; } // a ball is thrown
+    bool own = false; // the ball has a physics of its own, over the control's (which is for all its balls)
     static QString cleanAddress(const QString &a) { return a.isEmpty() || (a.startsWith(QLatin1Char('/')) && a.size() < 200) ? a : QString(); }
     QJsonObject toJson() const
     {
-        return QJsonObject{{"name", name}, {"x", px}, {"y", py}, {"accent", accent}, {"minX", minX}, {"maxX", maxX}, {"minY", minY}, {"maxY", maxY}, {"physics", physics.toJson()}};
+        return QJsonObject{{"name", name}, {"x", px}, {"y", py}, {"accent", accent}, {"minX", minX}, {"maxX", maxX}, {"minY", minY}, {"maxY", maxY}, {"own", own}, {"physics", physics.toJson()}};
     }
     void apply(const QJsonObject &o)
     {
@@ -79,6 +79,7 @@ struct Ball {
         number("minX", minX), number("maxX", maxX), number("minY", minY), number("maxY", maxY);
         if (!(maxX > minX)) maxX = minX + 1;
         if (!(maxY > minY)) maxY = minY + 1;
+        if (o.value("own").isBool()) own = o.value("own").toBool();
         if (o.value("physics").isObject()) physics.apply(o.value("physics").toObject());
     }
 };
@@ -189,11 +190,11 @@ struct Control {
     }
     // The range of a point's X and Y (a ball has its own)
     std::array<double, 4> pointRange(size_t i) const { return i < balls.size() ? std::array<double, 4>{balls[i].minX, balls[i].maxX, balls[i].minY, balls[i].maxY} : std::array<double, 4>{min, max, min, max}; }
-    const Physics &physicsOf(size_t point) const { return point < balls.size() ? balls[point].physics : physics; }
+    const Physics &physicsOf(size_t point) const { return point < balls.size() && balls[point].own ? balls[point].physics : physics; } // a ball's own, or the control's
     bool physical() const { return kind == Kind::Slider || kind == Kind::Pad || kind == Kind::Multi || kind == Kind::Points; }
     bool moving() const // some of its numbers have a physics
     {
-        if (kind == Kind::Points && !balls.empty()) { for (const Ball &b : balls) if (b.physics.on()) return true; return false; }
+        if (kind == Kind::Points && !balls.empty()) { for (size_t i = 0; i < balls.size(); ++i) if (physicsOf(i).on()) return true; return false; }
         return physical() && physics.on();
     }
     static QString kindKey(Kind k)
