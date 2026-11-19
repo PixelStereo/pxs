@@ -137,7 +137,7 @@ private:
     void onFrame(Client &c, int opcode, const QByteArray &payload);
     void push();
     bool intercept(quint64 id, const QString &type, const QJsonObject &o); // a control with a physics: the hand sets where it goes, not where it is
-    void released(quint64 id);                                             // the hand let go: its physics goes on by itself
+    void released(quint64 id, int ball = -1);                                          // the hand let go: its physics goes on by itself
     void stepPhysics();
     void send(QTcpSocket *s, const QByteArray &frame) const;
     QByteArray controlsMessage(const std::vector<Control> &controls) const;

@@ -369,13 +369,13 @@ inline constexpr char kScriptB2[] = R"JS(
     const at = (p, i) => { const b = pad.getBoundingClientRect(), r = rg(i); return [r[0] + clamp((p.x - b.left) / b.width, 0, 1) * (r[1] - r[0]), r[2] + clamp(1 - (p.y - b.top) / b.height, 0, 1) * (r[3] - r[2])]; };
     const taken = i => Object.keys(held).some(k => held[k] === i);
     const put = p => { const i = held[p.id]; if (i === undefined) return; const q = at(p, i), w = v.slice(); w[2 * i] = Number(q[0].toFixed(4)); w[2 * i + 1] = Number(q[1].toFixed(4));
-      if (!physical(i)) v = w; dots[i].classList.add('hot'); draw(); io.input(w); };
+      if (!physical(i)) v = w; dots[i].classList.add('hot'); draw(); io.input(w, [i]); return w; };
     // The nearest free ball to the finger, in the unit square (the balls have ranges of their own)
     const unit = (i, q) => { const r = rg(i); return [(q[0] - r[0]) / (r[1] - r[0]), (q[1] - r[2]) / (r[3] - r[2])]; };
     presses(pad, { down: p => { let best = -1, bd = 1e18; const b = pad.getBoundingClientRect(), f = [clamp((p.x - b.left) / b.width, 0, 1), clamp(1 - (p.y - b.top) / b.height, 0, 1)];
         for (let i = 0; i < n; i++) { if (taken(i)) continue; const u = unit(i, [v[2 * i], v[2 * i + 1]]), dx = u[0] - f[0], dy = u[1] - f[1], dd = dx * dx + dy * dy; if (dd < bd) { bd = dd; best = i; } }
         if (best < 0) return false; if (!Object.keys(held).length) io.begin(); held[p.id] = best; put(p); },
-      move: put, up: p => { put(p); const i = held[p.id]; if (i !== undefined) dots[i].classList.remove('hot'); delete held[p.id]; if (!Object.keys(held).length) io.end(); } });
+      move: put, up: p => { const i = held[p.id], w = put(p); if (i !== undefined) { dots[i].classList.remove('hot'); io.letGo(w, i); } delete held[p.id]; if (!Object.keys(held).length) io.end(); } });
     return { el: pad, resize: draw, set: x => { const any = Object.keys(held).length > 0; for (let i = 0; i < x.length && i < n * 2; i++) if (!any || physical(i >> 1)) v[i] = x[i]; draw(); } };
   }
   // A row of sliders in one tile (as Lemur's and NexusUI's multi-slider): a finger across the bars sets each one it crosses
@@ -465,8 +465,8 @@ inline constexpr char kScriptC[] = R"JS(
   }
   function tile(it) {
     const c = it.c, t = { it, el: el('div', 'tile' + (c.kind === 'group' ? ' sec' : '')), api: null };
-    const face = el('div', 'face'), hd = el('div', 'hd'), name = el('span', '', c.name), val = el('b');
-    if (c.dest) { const d = el('div', 'dest', c.dest); d.title = c.dest; face.appendChild(d); } // where it comes from: Device:/address
+    const face = el('div', 'face'), hd = el('div', 'hd'), name = el('span', '', c.name.split('/').pop() || c.name), val = el('b');
+    if (c.dest) name.title = c.dest; // only the node's name shows; the whole address is on hover
     face.style.setProperty('--a', c.accent || '');
     if (!c.accent) face.style.removeProperty('--a');
     hd.appendChild(name); if (c.kind === 'slider') hd.appendChild(val);
@@ -474,8 +474,10 @@ inline constexpr char kScriptC[] = R"JS(
     face.appendChild(hd);
     if (c.kind !== 'group' && c.kind !== 'toggle') {
       const bd = el('div', 'bd');
-      const kindMsg = (v) => c.kind === 'adsr' ? { t: 'adsr', id: c.id, v } : c.kind === 'multi' ? { t: 'multi', id: c.id, v } : c.kind === 'points' ? { t: 'points', id: c.id, v } : { t: 'set', id: c.id, v };
-      const io = { begin: () => active.add(c.id), input: v => { values[c.id] = v; if (val) val.textContent = fmt(c, v); throttled(c.id, () => send(kindMsg(v))); }, end: () => { active.delete(c.id); send(kindMsg(values[c.id])); send({ t: 'rel', id: c.id }); } };
+      const kindMsg = (v, h) => c.kind === 'adsr' ? { t: 'adsr', id: c.id, v } : c.kind === 'multi' ? { t: 'multi', id: c.id, v } : c.kind === 'points' ? { t: 'points', id: c.id, v, h } : { t: 'set', id: c.id, v };
+      const io = { begin: () => active.add(c.id), input: (v, h) => { values[c.id] = v; if (val) val.textContent = fmt(c, v); throttled(c.id, () => send(kindMsg(v, h))); },
+        letGo: (v, i) => { send(kindMsg(v, [i])); send({ t: 'rel', id: c.id, i }); }, // one ball let go: the others go on
+        end: () => { active.delete(c.id); if (c.kind !== 'points') { send(kindMsg(values[c.id])); send({ t: 'rel', id: c.id }); } } };
       t.api = widget(c, io); t.val = val; bd.appendChild(t.api.el); face.appendChild(bd);
     } else if (c.kind === 'toggle') {
       const bd = el('div', 'bd'), io = { begin() {}, input: v => send({ t: 'set', id: c.id, v }), end() {} };

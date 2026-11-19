@@ -4,6 +4,7 @@
 #include "pxs/ControlsPage.h"
 #include "WebSocketFrame.h"
 
+#include <algorithm>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QHostAddress>
@@ -387,7 +388,7 @@ void Server::onFrame(Client &c, int opcode, const QByteArray &payload)
             return;
         }
         if (type == QLatin1String("rel")) {
-            released(o.value("id").toString().toULongLong());
+            released(o.value("id").toString().toULongLong(), o.value("i").toInt(-1));
             return;
         }
         const bool setting = type == QLatin1String("set") || type == QLatin1String("color") || type == QLatin1String("point") || type == QLatin1String("adsr") ||
@@ -498,8 +499,22 @@ bool Server::intercept(quint64 id, const QString &type, const QJsonObject &o)
     }
     physics::Body &b = *found;
     const std::vector<double> units = physics::toUnits(*c, want);
+    // A pad's message names the balls the hand moves ("h"): the others keep going (their numbers in it are only where they were)
+    std::vector<char> mine(units.size(), 1);
+    if (c->kind == Control::Kind::Points && o.contains("h")) {
+        std::fill(mine.begin(), mine.end(), 0);
+        for (const QJsonValue &k : o.value("h").toArray()) {
+            const int ball = k.toInt(-1);
+            for (int j = 2 * ball; ball >= 0 && j < 2 * ball + 2 && j < int(mine.size()); ++j) mine[j] = 1;
+        }
+    }
+    if (b.hand.size() != units.size()) b.hand.assign(units.size(), b.held ? 1 : 0);
+    if (!b.held) std::fill(b.hand.begin(), b.hand.end(), 0);
     for (size_t i = 0; i < units.size(); ++i)
-        if (std::isfinite(want[i])) b.target[i] = units[i];
+        if (mine[i] && std::isfinite(want[i])) {
+            b.target[i] = units[i];
+            b.hand[i] = 1;
+        }
     b.held = true;
     b.moving = true;
     b.movedAt = m_clock.elapsed();
@@ -507,11 +522,15 @@ bool Server::intercept(quint64 id, const QString &type, const QJsonObject &o)
     return true;
 }
 
-void Server::released(quint64 id)
+void Server::released(quint64 id, int ball)
 {
     auto found = m_bodies.find(id);
     if (found == m_bodies.end()) return;
-    found->held = false;
+    if (ball >= 0 && !found->hand.empty()) { // one finger up: that ball is thrown, the others are still held
+        for (int j = 2 * ball; j < 2 * ball + 2 && j < int(found->hand.size()); ++j) found->hand[j] = 0;
+        found->held = std::any_of(found->hand.begin(), found->hand.end(), [](char h) { return h != 0; });
+    } else
+        found->held = false;
     found->moving = true;
     if (!m_physics.isActive()) m_physics.start();
 }
