@@ -225,7 +225,20 @@ QByteArray Server::controlsMessage(const std::vector<Control> &controls) const
     QJsonArray list;
     for (const Control &c : controls) list.append(c.wireJson());
     const QString title = m_backend->title();
-    return QJsonDocument(QJsonObject{{"t", "controls"}, {"title", title.isEmpty() ? m_name : title}, {"show", hasShowPage()}, {"list", list}}).toJson(QJsonDocument::Compact);
+    return QJsonDocument(QJsonObject{{"t", "controls"}, {"title", title.isEmpty() ? m_name : title}, {"show", hasShowPage()}, {"sizes", m_sizes}, {"list", list}})
+        .toJson(QJsonDocument::Compact);
+}
+
+void Server::setDefaultSizes(const QJsonObject &sizes)
+{
+    QJsonObject clean;
+    for (auto it = sizes.begin(); it != sizes.end() && clean.size() < 64; ++it) {
+        const QJsonArray a = it.value().toArray();
+        if (a.size() == 2 && it.key().size() < 24) clean.insert(it.key(), QJsonArray{std::clamp(a[0].toInt(1), 1, 12), std::clamp(a[1].toInt(1), 1, 40)});
+    }
+    if (clean == m_sizes) return;
+    m_sizes = clean;
+    for (Client &c : m_clients) c.controlsSeen = ~0ull; // each page is sent the list again, with the sizes
 }
 
 void Server::onData(QTcpSocket *s)
