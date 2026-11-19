@@ -9,6 +9,20 @@ namespace pxs {
 namespace {
 QStringList segments(const QString &path) { return path.split('/', Qt::SkipEmptyParts); }
 
+// OSC does not allow a space or any of  # * , ? [ ] { }  in the name of a container or a method: they become '_'
+QString cleanName(QString name)
+{
+    for (QChar &c : name)
+        if (c == ' ' || c == '#' || c == '*' || c == ',' || c == '?' || c == '[' || c == ']' || c == '{' || c == '}') c = '_';
+    return name;
+}
+QStringList names(const QString &path)
+{
+    QStringList out = segments(path);
+    for (QString &name : out) name = cleanName(name);
+    return out;
+}
+
 void collect(Node &node, const QStringList &pattern, int at, std::vector<Node *> &out)
 {
     if (at == pattern.size()) {
@@ -65,7 +79,7 @@ Node *Node::child(const QString &name) const
 Node &Tree::add(const QString &path)
 {
     Node *node = &m_root;
-    for (const QString &name : segments(path)) {
+    for (const QString &name : names(path)) {
         auto &slot = node->m_children[name];
         if (!slot) {
             slot.reset(new Node);
@@ -94,7 +108,10 @@ Node &Tree::add(const QString &path, std::unique_ptr<Parameter> parameter)
     if (info.type != ParamInfo::Type::Trigger && info.defaultValue.isValid()) node.reset = [p] { return p->reset(); };
     node.type = oscType(info);
     node.access = info.access;
-    if (info.isNumber() && !info.unbounded) node.range = QJsonArray{QJsonObject{{"MIN", info.min}, {"MAX", info.max}}};
+    if (info.isNumber() && !info.unbounded) {
+        node.range = QJsonArray{QJsonObject{{"MIN", info.min}, {"MAX", info.max}}};
+        if (info.access & ParamInfo::Write) node.clip = QStringLiteral("both"); // a write is kept within the limits
+    }
     if (info.type == ParamInfo::Type::Choice) {
         QJsonArray vals;
         for (const QString &key : info.choices) vals.append(key);
@@ -170,7 +187,7 @@ bool Tree::changed(const QString &path) const
 Node *Tree::find(const QString &path) const
 {
     const Node *node = &m_root;
-    for (const QString &name : segments(path)) {
+    for (const QString &name : names(path)) {
         node = node->child(name);
         if (!node) return nullptr;
     }
@@ -198,13 +215,18 @@ int Tree::apply(const osc::Message &message) const
     int accepted = 0;
     for (Node *node : match(message.address))
         if ((node->access & 2) && !node->locked && node->set) {
+            // A write may cause another one (a mapping that drives a second node): each keeps its own state
+            const Node *outer = m_applying;
+            const bool outerNotified = m_applyNotified;
             m_applying = node;
             m_applyNotified = false;
             const bool ok = node->set(message.args);
-            m_applying = nullptr;
+            const bool told = m_applyNotified;
+            m_applying = outer;
+            m_applyNotified = outerNotified;
             if (!ok) continue;
             ++accepted;
-            if (!m_applyNotified) notify(*node);
+            if (!told) notify(*node);
         }
     return accepted;
 }
@@ -291,21 +313,51 @@ osc::Message Tree::message(const Node &node)
     return m;
 }
 
-QJsonValue Tree::jsonValue(const QString &type, const QVariant &v, int k)
+namespace {
+// One OSC argument as OSCQuery writes it (the table of the proposal): numbers, strings, a colour as #RRGGBBAA, a switch as
+// a boolean, nothing for what has no value (N I) or no description (blob, MIDI)
+QJsonValue scalar(QChar t, const QVariant &v)
 {
-    const QChar t = k < type.size() ? type[k] : QChar();
     if (t == 'T' || t == 'F') return v.toBool();
     if (t == 'i' || t == 'h') return v.toLongLong();
-    if (t == 's') return v.toString();
-    if (t == 'N' || t == 'I') return QJsonValue();
+    if (t == 's' || t == 'S' || t == 'c') return v.toString();
+    if (t == 'r') return QStringLiteral("#%1").arg(quint32(v.toLongLong()), 8, 16, QLatin1Char('0')).toUpper();
+    if (t == 'N' || t == 'I' || t == 'b' || t == 'm') return QJsonValue();
     const double d = v.toDouble();
     return std::isfinite(d) ? d : 0.0;
+}
+
+// The values of a type tag string, with its arrays as arrays; `args` holds them flat, in order
+QJsonArray valuesOf(const QString &type, const QVariantList &args, int &at, int &used, bool nested)
+{
+    QJsonArray out;
+    while (at < type.size()) {
+        const QChar t = type[at++];
+        if (t == ']') {
+            if (nested) break;
+            continue;
+        }
+        if (t == '[') out.append(valuesOf(type, args, at, used, true));
+        else out.append(scalar(t, args.value(used++)));
+    }
+    return out;
+}
+} // namespace
+
+QJsonValue Tree::jsonValue(const QString &type, const QVariant &v, int k)
+{
+    return scalar(k < type.size() ? type[k] : QChar(), v);
 }
 
 QJsonObject Tree::json(const QString &path) const
 {
     const Node *n = find(path);
-    if (!n) return {};
+    return n ? describe(*n, true) : QJsonObject();
+}
+
+QJsonObject Tree::describe(const Node &node, bool contents) const
+{
+    const Node *n = &node;
     QJsonObject o;
     o["FULL_PATH"] = n->path();
     o["ACCESS"] = n->access;
@@ -316,15 +368,15 @@ QJsonObject Tree::json(const QString &path) const
         if ((n->access & 1) && n->get) {
             const QVariantList v = n->get();
             if (!v.isEmpty()) {
-                QJsonArray a;
-                for (int k = 0; k < v.size(); ++k) a.append(jsonValue(n->type, v[k], k));
-                o["VALUE"] = a;
+                int at = 0, used = 0;
+                o["VALUE"] = valuesOf(n->type, v, at, used, false);
             }
         }
         if (!n->range.isEmpty()) o["RANGE"] = n->range;
         if (!n->clip.isEmpty()) {
             QJsonArray c;
-            for (int k = 0; k < n->type.size(); ++k) c.append(n->clip);
+            for (QChar t : n->type)
+                if (t != '[' && t != ']') c.append(n->clip);
             o["CLIPMODE"] = c;
         }
     }
@@ -332,27 +384,28 @@ QJsonObject Tree::json(const QString &path) const
         const QJsonValue v = entry.second();
         if (!v.isNull() && !v.isUndefined()) o[entry.first] = v;
     }
-    if (n->isContainer()) { // a container always has CONTENTS (even empty)
-        QJsonObject contents;
-        for (const auto &entry : n->children()) contents[entry.first] = json(entry.second->path());
-        o["CONTENTS"] = contents;
+    if (n->isContainer() && contents) { // a container always has CONTENTS (even empty)
+        QJsonObject children;
+        for (const auto &entry : n->children()) children[entry.first] = describe(*entry.second, true);
+        o["CONTENTS"] = children;
     }
     return o;
 }
 
 bool Tree::attribute(const QString &path, const QString &name, QJsonObject &out) const
 {
-    const QJsonObject node = json(path);
-    if (node.isEmpty()) return false;
+    const Node *n = find(path);
+    if (!n) return false;
     out = QJsonObject();
     const QString key = name.toUpper();
+    const QJsonObject node = describe(*n, key == QLatin1String("CONTENTS")); // the subtree only when it is the one asked for
     if (node.contains(key)) out[key] = node.value(key);
     return true;
 }
 
 QJsonObject Tree::defaultExtensions()
 {
-    return QJsonObject{{"ACCESS", true}, {"VALUE", true}, {"RANGE", true}, {"DESCRIPTION", true}};
+    return QJsonObject{{"ACCESS", true}, {"VALUE", true}, {"RANGE", true}, {"DESCRIPTION", true}, {"CLIPMODE", true}, {"PXS_LOCKED", true}};
 }
 
 QJsonObject Tree::hostInfo(const QString &name, int oscPort, const QJsonObject &extensions, const QJsonObject &more)

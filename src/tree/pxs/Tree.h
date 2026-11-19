@@ -141,6 +141,7 @@ public:
 
 private:
     void notify(const Node &node, const QVariantList &args = {}) const;
+    QJsonObject describe(const Node &node, bool contents) const; // the OSCQuery object of a node (and its subtree)
     Node m_root;
     QStringList m_pendingLocks;
     std::function<void(const osc::Message &)> m_output;

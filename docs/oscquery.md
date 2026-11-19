@@ -73,6 +73,20 @@ action), `ACCESS` (1 read, 2 write, 3 both), `RANGE` (`MIN` and `MAX`, or `VALS`
 and `DESCRIPTION`. `hostInfo(name, port, extensions)` gives the `/?HOST_INFO` answer (each application says which extensions it supports). The HTTP server and the announcement (mDNS)
 belong to the application; the tree gives them their content.
 
+## What the HTTP server answers
+
+Following the OSCQuery proposal: the node's JSON for `/path`, one attribute for `/path?NAME` (`{"VALUE": [..]}`), the host for
+`/?HOST_INFO`, 404 for a path that does not exist. A node that has no such attribute answers an **empty object**
+(`/show?TYPE` on a container, `/detect/peak?VALUE` on a signal). **204** is for a `VALUE` asked of what cannot be read
+(ACCESS 0 or 2), and for an attribute the server does not have at all (not in `EXTENSIONS`). A bounded parameter that is
+written says `CLIPMODE: both`: its value is kept within its limits.
+
+`VALUE` and `RANGE` follow the type tags, arrays included (`i[ff]s` gives `[3, [0.5, 1.5], "x"]`); `r` is a colour
+(`"#RRGGBBAA"`), a blob and MIDI give `null`.
+
+A node name cannot hold a space or any of `# * , ? [ ] { }` (they would break the address patterns): each becomes `_`, in
+`add()` and in `find()`, so the same name finds the same node.
+
 ## Applying a message
 
 `apply()` writes a parameter when its access allows it and the argument fits its type: a number for `Float` and `Int` (an
