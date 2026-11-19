@@ -155,6 +155,16 @@ int main(int argc, char **argv)
     }
 #endif
 
+    // A device by its name, not its number
+    {
+        Client named;
+        bool up = false;
+        QObject::connect(&named, &Client::ready, [&] { up = true; });
+        named.open("localhost", service.httpPort());
+        pump([&] { return up; });
+        CHECK(up);
+    }
+
     // An unreachable device fails, once
     Client nobody;
     QString why;
