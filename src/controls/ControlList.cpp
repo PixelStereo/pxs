@@ -277,7 +277,10 @@ bool setColor(Control &c, double r, double g, double b, const Feed &feed)
 std::optional<Control> forParameter(const ParameterSource &source, quint64 scope, const QString &path, quint64 group)
 {
     ParamInfo info;
-    if (!source.info(scope, path, &info) || !(info.access & ParamInfo::Write) || info.type == ParamInfo::Type::Text) return std::nullopt;
+    if (!source.info(scope, path, &info) || info.type == ParamInfo::Type::Text) return std::nullopt;
+    const bool writable = info.access & ParamInfo::Write;
+    // What cannot be set can be seen: a number, a switch or a choice that is read only is a view (a meter, a lamp, a readout)
+    if (!writable && (info.colorComponent >= 0 || info.type == ParamInfo::Type::Trigger)) return std::nullopt;
     QString target = path; // what the control drives: the parameter, or a whole color
     Control c;
     c.group = group;
@@ -313,6 +316,7 @@ std::optional<Control> forParameter(const ParameterSource &source, quint64 scope
     if (c.name.isEmpty()) c.name = info.name();
     c.boundScope = scope;
     c.boundParam = target;
+    if (!writable) c.widget = c.kind == Kind::Slider ? QStringLiteral("meter") : c.kind == Kind::Toggle ? QStringLiteral("led") : QStringLiteral("readout");
     return c;
 }
 

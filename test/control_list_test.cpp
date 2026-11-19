@@ -156,7 +156,10 @@ int main()
     check(forParameter(fake, 0, "on", 0)->kind == Control::Kind::Toggle, "a toggle for a bool");
     const auto choice = forParameter(fake, 0, "mode", 0);
     check(choice && choice->kind == Control::Kind::Choice && choice->value == 1, "a choice");
-    check(!forParameter(fake, 0, "ro", 0), "a read-only parameter has no control");
+    {
+        const auto ro = forParameter(fake, 0, "ro", 0);
+        check(ro && ro->widget == "meter" && ro->boundParam == "ro", "a read-only number is a view: a meter");
+    }
     check(!forParameter(fake, 0, "nope", 0), "nor an unknown one");
     const auto color = forParameter(fake, 0, "tint/r", 0);
     check(color && color->kind == Control::Kind::Color && color->boundParam == "tint", "a color's channel gives the color");
