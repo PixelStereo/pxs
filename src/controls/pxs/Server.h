@@ -21,6 +21,7 @@
 //   client -> {"t":"layout","items":{"<id>":{"x","y","w","h"}}}   {"t":"edit","id":..,"props":{…}} (Control::applyProps)   {"t":"remove","id":..}
 // An application adds its own pages and messages through the hooks (servePage, message, tick).
 #include "Control.h"
+#include "Physics.h"
 
 #include <QByteArray>
 #include <QHash>
@@ -131,8 +132,8 @@ private:
     void onData(QTcpSocket *s);
     void onFrame(Client &c, int opcode, const QByteArray &payload);
     void push();
-    void touched(quint64 id);  // a client moved this control: its speed, for when it lets go
-    void released(quint64 id); // it let go: what is left of its speed, and its physics
+    bool intercept(quint64 id, const QString &type, const QJsonObject &o); // a control with a physics: the hand sets where it goes, not where it is
+    void released(quint64 id);                                             // the hand let go: its physics goes on by itself
     void stepPhysics();
     void send(QTcpSocket *s, const QByteArray &frame) const;
     QByteArray controlsMessage(const std::vector<Control> &controls) const;
@@ -143,12 +144,7 @@ private:
     QHash<QTcpSocket *, Client> m_clients;
     QTimer m_timer, m_physics;
     QElapsedTimer m_clock;
-    struct Body {
-        std::vector<double> last, v; // its numbers at the last gesture message, its speed (0..1 of the range per second)
-        qint64 movedAt = 0;
-        bool held = false, moving = false;
-    };
-    QHash<quint64, Body> m_bodies;
+    QHash<quint64, physics::Body> m_bodies;
     std::vector<std::vector<Control>> m_undo, m_redo;
     QString m_lastWhat;
     qint64 m_lastAt = 0;

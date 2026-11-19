@@ -70,6 +70,7 @@ bool setColor(Control &c, double r, double g, double b, const Feed &feed); // an
 std::optional<Control> forParameter(const ParameterSource &source, quint64 scope, const QString &path, quint64 group); // not added
 // A pad that is a view of two numeric parameters (X then Y). It is 0..1 on both axes: each is mapped to its parameter's own range
 std::optional<Control> forParameters(const ParameterSource &source, quint64 scope, const QString &pathX, const QString &pathY, quint64 group);
+bool setBoundPoints(const Control &c, ParameterSource &source, const std::vector<double> &xy); // a Points control: each ball's two parameters
 bool setBoundPoint(const Control &c, ParameterSource &source, double x, double y); // a pad's two parameters
 void fillBound(Control &c, const ParameterSource &source);                  // its value, range, step and choices, now
 bool setBound(const Control &c, ParameterSource &source, double value);      // the parameter is what is set

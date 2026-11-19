@@ -1,41 +1,94 @@
 #pragma once
-// The physics of a control's numbers (Control::physics): one body per number, in the 0..1 of its range. Friction, a spring to the
-// control's default, bounce against the ends. Pure: Server.h calls it every 16 ms for what the hand let go of.
+// The physics of a control's numbers (Control::physics, a Points control's balls each have theirs), as Lemur has it: one body per number, in
+// the 0..1 of its range, that goes toward where the hand is (Interpolate) or is held to it by a spring and goes on by itself when the hand
+// lets go (Mass-Spring: friction, the pull to a rest place, the bounce on the walls). Pure: Server.h steps it every 16 ms.
 #include "Control.h"
 
+#include <QtGlobal>
 #include <algorithm>
 #include <cmath>
 #include <vector>
 
 namespace pxs::controls::physics {
 
-// The 0..1 of a number within the control's range
-inline double unit(const Control &c, double v) { return c.max > c.min ? std::clamp((v - c.min) / (c.max - c.min), 0.0, 1.0) : 0.0; }
-inline double fromUnit(const Control &c, double u) { return c.min + std::clamp(u, 0.0, 1.0) * (c.max - c.min); }
-
-// One step of dt seconds on the numbers x (in the control's own range) with their speeds v (per second, in 0..1 of the range).
-// True while something still moves; false (and v zero) at rest
-inline bool step(const Control &c, std::vector<double> &x, std::vector<double> &v, double dt)
-{
-    const Physics &p = c.physics;
-    v.resize(x.size(), 0.0);
-    const double target = unit(c, c.def), damp = std::exp(-p.friction * dt);
+struct Body {
+    std::vector<double> pos, vel, target; // 0..1 of each number's range
+    bool held = false;                    // the hand is on the control
     bool moving = false;
-    for (size_t i = 0; i < x.size(); ++i) {
-        double u = unit(c, x[i]);
-        v[i] += p.attract * (target - u) * dt;
-        v[i] *= damp;
-        u += v[i] * dt;
-        if (u < 0) { u = 0; v[i] = -v[i] * p.bounce; }
-        if (u > 1) { u = 1; v[i] = -v[i] * p.bounce; }
-        const bool pulled = p.attract > 0 && std::abs(target - u) > 5e-4;
-        if (std::abs(v[i]) < 2e-3 && !pulled) {
-            v[i] = 0;
-            if (p.attract > 0) u = target;
+    qint64 movedAt = 0;
+};
+
+// Number i of a control: its range, its physics, its rest place
+inline void rangeOf(const Control &c, size_t i, double *lo, double *hi)
+{
+    if (c.kind == Control::Kind::Points) {
+        const auto r = c.pointRange(i / 2);
+        *lo = i % 2 == 0 ? r[0] : r[2];
+        *hi = i % 2 == 0 ? r[1] : r[3];
+    } else {
+        *lo = c.min;
+        *hi = c.max;
+    }
+}
+inline const Physics &of(const Control &c, size_t i) { return c.kind == Control::Kind::Points ? c.physicsOf(i / 2) : c.physics; }
+inline double restOf(const Control &c, size_t i)
+{
+    const Physics &p = of(c, i);
+    return (c.kind == Control::Kind::Points || c.kind == Control::Kind::Pad) && i % 2 == 1 ? p.restY : p.restX;
+}
+
+inline std::vector<double> toUnits(const Control &c, const std::vector<double> &numbers)
+{
+    std::vector<double> out(numbers.size());
+    for (size_t i = 0; i < numbers.size(); ++i) {
+        double lo, hi;
+        rangeOf(c, i, &lo, &hi);
+        out[i] = hi > lo ? std::clamp((numbers[i] - lo) / (hi - lo), 0.0, 1.0) : 0.0;
+    }
+    return out;
+}
+inline std::vector<double> fromUnits(const Control &c, const std::vector<double> &units)
+{
+    std::vector<double> out(units.size());
+    for (size_t i = 0; i < units.size(); ++i) {
+        double lo, hi;
+        rangeOf(c, i, &lo, &hi);
+        out[i] = lo + std::clamp(units[i], 0.0, 1.0) * (hi - lo);
+    }
+    return out;
+}
+
+// One step of dt seconds. True while something still moves (or is held by the hand and not there yet)
+inline bool step(const Control &c, Body &b, double dt)
+{
+    const size_t n = b.pos.size();
+    b.vel.resize(n, 0.0);
+    b.target.resize(n, 0.0);
+    bool moving = false;
+    for (size_t i = 0; i < n; ++i) {
+        const Physics &p = of(c, i);
+        double &u = b.pos[i], &v = b.vel[i];
+        const double t = b.target[i];
+        if (p.mode == Physics::None) {
+            u = t;
+            v = 0;
+        } else if (p.mode == Physics::Interpolate) {
+            u += (t - u) * (1 - std::exp(-p.rate * dt));
+            v = 0;
+            if (std::abs(t - u) < 5e-4) u = t;
+            else moving = true;
         } else {
-            moving = true;
+            const double rest = restOf(c, i);
+            const double force = b.held ? p.tension * (t - u) : p.attract * (rest - u);
+            v += force * dt;
+            v *= std::exp(-p.friction * dt);
+            u += v * dt;
+            if (u < 0) { u = 0; v = -v * p.wall; }
+            if (u > 1) { u = 1; v = -v * p.wall; }
+            const double goal = b.held ? t : (p.attract > 0 ? rest : u);
+            if (std::abs(v) > 2e-3 || std::abs(goal - u) > 5e-4 * (p.attract > 0 || b.held ? 1 : 1e9)) moving = true;
+            else v = 0;
         }
-        x[i] = fromUnit(c, u);
     }
     return moving;
 }

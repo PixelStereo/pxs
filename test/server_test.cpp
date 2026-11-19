@@ -298,9 +298,9 @@ int main(int argc, char **argv)
         phone.sendText("{\"t\":\"undo\"}");
         phone.pumpUntil([&] { return fake.list.size() == 2; });
         // Physics: let go of a slider that is pulled back to its default
-        phone.sendText("{\"t\":\"edit\",\"id\":\"1\",\"props\":{\"physics\":{\"on\":true,\"friction\":8,\"attract\":60}}}");
-        phone.pumpUntil([&] { return fake.find(1)->physics.on; });
-        require(fake.find(1)->physics.on && near(fake.find(1)->physics.attract, 60), "a control's physics set from the page");
+        phone.sendText("{\"t\":\"edit\",\"id\":\"1\",\"props\":{\"physics\":{\"mode\":2,\"friction\":8,\"attract\":60,\"tension\":150,\"restX\":0}}}");
+        phone.pumpUntil([&] { return fake.find(1)->physics.mode == 2; });
+        require(fake.find(1)->physics.mode == 2 && near(fake.find(1)->physics.attract, 60), "a control's physics set from the page");
         phone.sendText("{\"t\":\"set\",\"id\":\"1\",\"v\":8}");
         phone.sendText("{\"t\":\"rel\",\"id\":\"1\"}");
         phone.pumpUntil([&] { return near(fake.find(1)->value, fake.find(1)->def, 0.01); }, 4000);
