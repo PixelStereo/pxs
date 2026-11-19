@@ -160,7 +160,9 @@ int main(int argc, char **argv)
     QString why;
     QObject::connect(&nobody, &Client::failed, [&](const QString &r) { why = r; });
     nobody.open("127.0.0.1", 1);
-    pump([&] { return !why.isEmpty(); });
+    // A runner's network stack may drop the connection to a closed port instead of refusing it (macOS and Windows runners
+    // did): the client gives up on its own transfer timeout (5 s), so wait longer than that
+    pump([&] { return !why.isEmpty(); }, 8000);
     CHECK(!why.isEmpty() && nobody.state() == Client::State::Failed);
 
     // OSC messages as a device's own arguments
