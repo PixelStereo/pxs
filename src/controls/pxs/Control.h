@@ -26,7 +26,7 @@ struct Physics {
     int mode = None;
     double friction = 5;   // 0..30, a rate per second
     double attraction = 120; // 0..400, the pull to the finger while it is on the control (Lemur's Attraction)
-    double tension = 30;     // 0..400, the pull to where the finger last was, once it has let go (0: the ball is thrown, free)
+    double tension = 0;      // 0..400, the pull to where the finger last was, once it has let go (0: the ball is thrown, free, and bounces on the walls)
     double wall = 0.6;     // 0..1, what is kept of the speed against an end of the range
     double rate = 12;      // 0.5..60 per second, how fast Interpolate follows the hand
     bool on() const { return mode != None; }

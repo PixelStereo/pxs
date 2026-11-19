@@ -85,6 +85,17 @@ int main()
         steps = 0;
         while (ph::step(c, b, 0.016) && steps < 5000) ++steps;
         check(near(b.pos[0], 0.8, 1e-3), "held by the attraction, it settles on the finger");
+        { // a ball thrown (no tension) goes on to the wall and bounces, it does not turn back before
+            Control ball = c;
+            ball.physics = {};
+            ball.physics.mode = pxs::controls::Physics::MassSpring, ball.physics.friction = 1, ball.physics.wall = 0.9;
+            ph::Body t;
+            t.pos = {0.5}, t.vel = {1.5}, t.target = {0.5}, t.held = false;
+            double top = 0;
+            bool bounced = false;
+            for (int i = 0; i < 400 && !bounced; ++i) { ph::step(ball, t, 0.016); top = std::max(top, t.pos[0]); bounced = t.vel[0] < 0; }
+            check(top > 0.99 && bounced, "a thrown ball reaches the wall before it comes back");
+        }
         // let go at 0.8 after being pressed there, with a tension: it settles on 0.8 after some bounces (a slider at 0.2, pressed on 0.8)
         c.physics.attraction = 120, c.physics.tension = 40, c.physics.friction = 5;
         b.pos = {0.2}, b.vel = {0.0}, b.target = {0.8}, b.held = true;
