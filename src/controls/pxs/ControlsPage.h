@@ -547,11 +547,11 @@ inline constexpr char kScriptD[] = R"JS(
   const push = props => { sheetFor = sheetId; sheetProps = Object.assign(sheetProps, props); clearTimeout(sheetTimer); sheetTimer = setTimeout(flush, 220); };
   function closeSheet() { flush(); sheetId = 0; $('#sheet').classList.remove('open'); selectTile(0); }
   // The physics of a number, as Lemur has it: Interpolate (it glides to the hand) or Mass-Spring (a spring to the hand; once let go it goes on by
-  // itself: friction, the pull to a rest place, the bounce on the walls)
+  // itself with the push it got: friction, the bounce on the walls)
   function physFields(host, ph, save) {
     const p = Object.assign({}, ph), box = el('div');
     host.appendChild(el('label', '', 'Physics'));
-    const mode = el('select'); [['None', 0], ['Interpolate (glides to the hand)', 1], ['Mass-Spring (goes on by itself)', 2]].forEach(m => { const o = el('option', '', m[0]); o.value = m[1]; mode.appendChild(o); });
+    const mode = el('select'); [['None', 0], ['Interpolate (glides to the hand)', 1], ['Mass-Spring (thrown by the finger)', 2]].forEach(m => { const o = el('option', '', m[0]); o.value = m[1]; mode.appendChild(o); });
     mode.value = p.mode || 0; host.appendChild(mode); host.appendChild(box);
     const knob = (label, key, lo, hi, root) => { box.appendChild(el('label', '', label)); const r = el('input'), h = el('div', 'hint'); r.type = 'range'; r.min = 0; r.max = 1000;
       const to = t => root ? lo + t * t * (hi - lo) : lo + t * (hi - lo), from = v => { const t = Math.max(0, Math.min(1, (v - lo) / (hi - lo))); return root ? Math.sqrt(t) : t; };
@@ -559,8 +559,7 @@ inline constexpr char kScriptD[] = R"JS(
       r.oninput = () => { p[key] = Number(to(Number(r.value) / 1000).toFixed(3)); say(); save(Object.assign({}, p)); }; say(); box.appendChild(r); box.appendChild(h); };
     const build = () => { box.textContent = '';
       if (p.mode === 1) knob('Speed', 'rate', 0.5, 60, true);
-      if (p.mode === 2) { knob('Tension (the spring to the hand)', 'tension', 0, 400, true); knob('Friction', 'friction', 0, 30, true); knob('Attraction to where the hand was', 'attract', 0, 200, true);
-        knob('Wall bounce', 'wall', 0, 1, false); } };
+      if (p.mode === 2) { knob('Attraction to the finger', 'tension', 0, 400, true); knob('Friction', 'friction', 0, 30, true); knob('Wall bounce', 'wall', 0, 1, false); } };
     mode.onchange = () => { p.mode = Number(mode.value); build(); save(Object.assign({}, p)); }; build();
   }
   // A pad of balls: a menu of the balls with + and -, and the range, addresses, color and physics of the chosen one

@@ -1,7 +1,7 @@
 #pragma once
 // The physics of a control's numbers (Control::physics, a Points control's balls each have theirs), as Lemur has it: one body per number, in
 // the 0..1 of its range, that goes toward where the hand is (Interpolate) or is held to it by a spring and goes on by itself when the hand
-// lets go (Mass-Spring: friction, the pull to where the hand last was, the bounce on the walls). Pure: Server.h steps it every 16 ms.
+// lets go (Mass-Spring: held by a spring, then thrown: friction and the bounce on the walls). Pure: Server.h steps it every 16 ms.
 #include "Control.h"
 
 #include <QtGlobal>
@@ -12,7 +12,7 @@
 namespace pxs::controls::physics {
 
 struct Body {
-    std::vector<double> pos, vel, target; // 0..1 of each number's range
+    std::vector<double> pos, vel, target; // 0..1 of each number's range (vel per second)
     bool held = false;                    // the hand is on the control
     bool moving = false;
     qint64 movedAt = 0;
@@ -72,14 +72,12 @@ inline bool step(const Control &c, Body &b, double dt)
             if (std::abs(t - u) < 5e-4) u = t;
             else moving = true;
         } else {
-            const double force = b.held ? p.tension * (t - u) : p.attract * (t - u); // the hand, held or gone: its last place
-            v += force * dt;
+            if (b.held) v += p.tension * (t - u) * dt; // attracted to the finger; let go, it goes on with the push it got
             v *= std::exp(-p.friction * dt);
             u += v * dt;
             if (u < 0) { u = 0; v = -v * p.wall; }
             if (u > 1) { u = 1; v = -v * p.wall; }
-            const bool pulled = b.held || p.attract > 0;
-            if (std::abs(v) > 2e-3 || (pulled && std::abs(t - u) > 5e-4)) moving = true;
+            if (std::abs(v) > 2e-3 || (b.held && std::abs(t - u) > 5e-4)) moving = true;
             else v = 0;
         }
     }
