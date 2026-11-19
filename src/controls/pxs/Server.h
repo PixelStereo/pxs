@@ -88,6 +88,8 @@ public:
     void setPageTitle(const QString &title) { m_pageTitle = title; } // the page's title in a browser's tab
     // The controls page may be framed by a page of this same server (an application's front page with the page beside its own panel). Call before start()
     void setFrameable(bool on) { m_frameable = on; }
+    // The size {w, h} in grid cells a control is given when it has no place yet, by widget ({"vfader": [2, 5], ...}); the page's own sizes for the others
+    void setDefaultSizes(const QJsonObject &sizes);
     // The largest message a client may send (4 KB: a control's settings). An application that takes a whole document raises it
     void setMaxFrame(quint64 bytes) { m_maxFrame = bytes; }
 
@@ -155,6 +157,7 @@ private:
     QString m_pin, m_status, m_name = QStringLiteral("Remote"), m_pageTitle = QStringLiteral("Controls");
     QByteArray m_csp;
     bool m_frameable = false;
+    QJsonObject m_sizes;
     quint64 m_maxFrame = 4096;
     QHash<QString, Attempts> m_attempts; // by address
 };
