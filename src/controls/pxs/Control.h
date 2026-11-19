@@ -203,6 +203,117 @@ struct Control {
         }
         return o;
     }
+    // What a page may change of a control (its tile's settings), kept within bounds: its name, widget, accent, and for the numbers their count,
+    // range, step, unit and curve. Anything else it sends is ignored
+    void applyProps(const QJsonObject &p)
+    {
+        auto number = [&](const char *key, double &into) {
+            if (p.value(key).isDouble() && std::isfinite(p.value(key).toDouble())) into = p.value(key).toDouble();
+        };
+        if (p.value("name").isString()) name = p.value("name").toString().left(60);
+        if (p.contains("widget")) widget = cleanWidget(p.value("widget").toString());
+        if (p.contains("accent")) accent = cleanAccent(p.value("accent").toString());
+        if (kind == Kind::Adsr) {
+            number("max", max);
+            max = std::clamp(max, 0.1, 60.0);
+        }
+        if (kind == Kind::Multi) {
+            double n = count;
+            number("count", n);
+            count = std::clamp(int(n), 2, kMultiMax);
+        }
+        if (kind == Kind::Points) {
+            double n = count;
+            number("count", n);
+            count = std::clamp(int(n), 1, kPointsMax);
+            number("min", min);
+            number("max", max);
+            if (!(max > min)) max = min + 1;
+        }
+        if (kind == Kind::Slider || kind == Kind::Multi) {
+            number("min", min);
+            number("max", max);
+            number("step", step);
+            number("default", def);
+            if (p.value("unit").isString()) unit = p.value("unit").toString().left(8);
+            number("curve", curve);
+            curve = std::clamp(curve, 0.1, 10.0);
+            step = std::clamp(step, 1e-6, std::max(1e-6, std::abs(max - min)));
+        }
+    }
+    // The control as the page is told of it: its definition and its value now (a value is a number, or an array for a color, a pad, an
+    // envelope, a row of sliders, the points of a pad)
+    QJsonObject wireJson() const
+    {
+        QJsonObject o{{"id", QString::number(id)}, {"name", name}, {"key", key}, {"kind", kindKey(kind)}};
+        if (group) o["group"] = QString::number(group);
+        o["span"] = span;
+        if (!widget.isEmpty()) o["widget"] = widget;
+        if (!accent.isEmpty()) o["accent"] = accent;
+        if (curve != 1) o["curve"] = curve;
+        if (gw > 0 && gh > 0) o["layout"] = QJsonObject{{"x", gx}, {"y", gy}, {"w", gw}, {"h", gh}};
+        switch (kind) {
+        case Kind::Group: o["columns"] = columns; break;
+        case Kind::Points: {
+            o["count"] = count;
+            o["min"] = min;
+            o["max"] = max;
+            QJsonArray list;
+            for (const auto &q : points) list.append(QJsonArray{q[0], q[1]});
+            o["points"] = list;
+            break;
+        }
+        case Kind::Multi: {
+            o["count"] = count;
+            o["min"] = min;
+            o["max"] = max;
+            o["step"] = step;
+            QJsonArray list;
+            for (double v : multi) list.append(v);
+            o["values"] = list;
+            break;
+        }
+        case Kind::Adsr:
+            o["max"] = max;
+            o["adsr"] = QJsonArray{adsr[0], adsr[1], adsr[2], adsr[3]};
+            break;
+        case Kind::Pad:
+            o["min"] = min;
+            o["max"] = max;
+            o["x"] = value;
+            o["y"] = value2;
+            break;
+        case Kind::Slider:
+            o["min"] = min;
+            o["max"] = max;
+            o["step"] = step;
+            o["unit"] = unit;
+            o["value"] = value;
+            break;
+        case Kind::Choice: o["choices"] = QJsonArray::fromStringList(choices); [[fallthrough]];
+        case Kind::Toggle:
+        case Kind::Button: o["value"] = value; break;
+        case Kind::Color: o["rgb"] = QJsonArray{rgb[0], rgb[1], rgb[2]}; break;
+        }
+        return o;
+    }
+    // Its values as numbers, to see what changed
+    std::vector<double> numbers() const
+    {
+        switch (kind) {
+        case Kind::Color: return {rgb[0], rgb[1], rgb[2]};
+        case Kind::Pad: return {value, value2};
+        case Kind::Adsr: return {adsr[0], adsr[1], adsr[2], adsr[3]};
+        case Kind::Multi: return multi;
+        case Kind::Points: {
+            std::vector<double> flat;
+            for (const auto &q : points) flat.push_back(q[0]), flat.push_back(q[1]);
+            return flat;
+        }
+        default: return {value};
+        }
+    }
+
     static Control fromJson(const QJsonObject &o)
     {
         Control c;

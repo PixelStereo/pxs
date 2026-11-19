@@ -69,11 +69,13 @@ target_include_directories(pxs_bind PUBLIC src/bind)
 target_link_libraries(pxs_bind PUBLIC pxs::tree pxs::widgets)
 
 # Controls: the model of a control (kinds, JSON, its place on the page) and the page an application serves for them: a free grid,
-# pages for the groups, Edit mode, SVG widgets. Header only; Qt Core.
-add_library(pxs_controls INTERFACE)
+# pages for the groups, Edit mode, SVG widgets, and the server (HTTP and WebSocket) that gives a page its controls. Qt Core and Network.
+add_library(pxs_controls STATIC src/controls/Server.cpp src/controls/pxs/Server.h src/controls/pxs/Control.h src/controls/pxs/ControlsPage.h
+    src/controls/WebSocketFrame.h)
 add_library(pxs::controls ALIAS pxs_controls)
-target_include_directories(pxs_controls INTERFACE src/controls)
-target_link_libraries(pxs_controls INTERFACE Qt6::Core)
+set_target_properties(pxs_controls PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pxs_controls PUBLIC src/controls)
+target_link_libraries(pxs_controls PUBLIC Qt6::Core Qt6::Network)
 
 if(PXS_BUILD_TESTS)
     enable_testing()
