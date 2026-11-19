@@ -1,12 +1,18 @@
 #pragma once
 
 // The HTTP side of OSCQuery, answered from a pxs::Tree: GET <osc path>[?VALUE|?TYPE|...] and GET /?HOST_INFO, in JSON.
-// Status: 200, 204 (the attribute has no value), 400, 404, 405. Read-only; CORS open so that a web page can ask.
+// Status: 200, 204, 400, 404, 405. Reading is open to a web page (CORS).
+//
+// The same port takes a WebSocket (the proposal's optional bi-directional side). A client that sends {"COMMAND": "LISTEN",
+// "DATA": "/path"} is streamed that method's values as binary OSC packets until it sends IGNORE; its binary frames are OSC
+// packets for the application (packetReceived). The server tells every client {"COMMAND": "PATH_CHANGED", "DATA": "/path"}
+// when the address space changes (broadcast). A web page may not open one unless it comes from this machine: a socket writes.
 
 #include <pxs/Tree.h>
 
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QTcpServer>
 #include <QTcpSocket>
 
@@ -34,16 +40,33 @@ public:
     };
     Response answer(const QString &method, const QByteArray &target) const;
 
+    int webSocketCount() const;
+    // A binary OSC packet to the WebSocket clients that listen to this exact address (a slow client misses it)
+    void stream(const QString &address, const QByteArray &packet);
+    // A JSON text to every WebSocket client (PATH_CHANGED)
+    void broadcast(const QByteArray &json);
+    // Whether a page of this Origin may open a WebSocket: none (a native client), or this machine's own
+    static bool originAllowed(const QByteArray &origin);
+
 signals:
     void logMessage(const QString &text);
+    void packetReceived(const QByteArray &packet); // a binary frame of a WebSocket client
+    void webSocketsChanged(int count);             // a WebSocket client came or went
 
 private:
     void onNewConnection();
     void onReadyRead(QTcpSocket *socket);
+    bool upgrade(QTcpSocket *socket, const QList<QByteArray> &request, const QHash<QByteArray, QByteArray> &headers);
+    void command(QTcpSocket *socket, const QByteArray &json);
 
     const Tree *m_tree;
     QTcpServer m_server;
-    QHash<QTcpSocket *, QByteArray> m_buffers;
+    struct Client {
+        QByteArray buffer;
+        bool websocket = false;
+        QSet<QString> listening;
+    };
+    QHash<QTcpSocket *, Client> m_clients;
     QString m_name = QStringLiteral("pxs");
     quint16 m_oscPort = 0;
     QJsonObject m_extensions = Tree::defaultExtensions();

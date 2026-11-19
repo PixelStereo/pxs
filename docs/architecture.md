@@ -71,7 +71,7 @@ Tes quatre idées sont en fait des choses que NyxMap a déjà. Le travail est un
 | 2 | l'entrée MIDI (`Midi.h`, RtMidi) et le MIDI learn | à faire |
 | 3 | le panneau Interaction et le panneau de paramètres, rendus génériques sur l'arbre | à faire |
 | 4 | les presets (snapshots) par adresse | à faire |
-| 5 | le WebSocket `LISTEN` du serveur | à faire |
+| 5 | le WebSocket `LISTEN` du serveur | **fait dans `OscService`** (`LISTEN`/`IGNORE`, OSC binaire, `PATH_CHANGED`) ; NyxMap garde le sien jusqu'à l'étape 6 |
 | 6 | NyxMap utilise les versions de `pxs` et supprime ses copies | à faire, en dernier |
 
 Le filtre par signal de MpOsc (inversion, attaque, relâchement) devient une interaction de `pxs` (étape 3 pour son interface).

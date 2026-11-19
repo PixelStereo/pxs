@@ -5,12 +5,17 @@
 // application says goes back over UDP, see Tree::setOutput:
 //   a parameter that changed (the feedback) -> the senders that wrote to it, and the targets
 //   a signal fired                          -> the targets only (a stream: nobody gets it by merely writing a parameter)
+// And the WebSocket of the OSCQuery port: a client that LISTENs to an address is streamed its values (a parameter written
+// or changed, a signal fired, from any source), what it sends is applied like a UDP packet, and every client is told
+// PATH_CHANGED when the address space changes (a node made or removed, the tree cleared), coalesced over a short while.
 
 #include <pxs/MdnsResponder.h>
 #include <pxs/QueryServer.h>
 
 #include <QHostAddress>
+#include <QTimer>
 #include <QUdpSocket>
+#include <atomic>
 
 namespace pxs {
 
@@ -43,6 +48,10 @@ signals:
 private:
     void onReadyRead();
     void send(const osc::Message &message);
+    void apply(const QByteArray &packet, const QHostAddress *from, quint16 port);
+    void onChanged(const Node &node, const QVariantList &args); // from any thread
+    void onStructure(const QString &path);                      // from any thread
+    void onPathTimer();
 
     Tree *m_tree;
     QString m_name;
@@ -51,6 +60,10 @@ private:
     MdnsResponder m_mdns;
     QList<QPair<QHostAddress, quint16>> m_targets, m_learned;
     bool m_learn = true;
+    int m_observer = 0;
+    std::atomic<int> m_webSockets{0}; // read by the thread that writes: nothing is built when nobody listens
+    QTimer m_pathTimer;
+    QString m_pathChanged; // the highest path that changed since the last PATH_CHANGED
 };
 
 } // namespace pxs

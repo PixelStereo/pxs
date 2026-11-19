@@ -87,6 +87,25 @@ written says `CLIPMODE: both`: its value is kept within its limits.
 A node name cannot hold a space or any of `# * , ? [ ] { }` (they would break the address patterns): each becomes `_`, in
 `add()` and in `find()`, so the same name finds the same node.
 
+## The WebSocket (the proposal's bi-directional side)
+
+`OscService` serves it on the HTTP port (`HOST_INFO` says `WS_PORT` and, in `EXTENSIONS`, `LISTEN` and `PATH_CHANGED`):
+
+- `{"COMMAND": "LISTEN", "DATA": "/layer/1/opacity"}` streams that address as binary OSC packets: a parameter that was written
+  or told changed (from OSC, a mapping, the panel, or the client itself), a signal that was fired. The address is exact:
+  `/layer` does not give `/layer/1/opacity`. `IGNORE` stops it. Actions say nothing.
+- A binary frame is an OSC packet for the application: it is applied like a UDP one (`messageReceived` too).
+- `{"COMMAND": "PATH_CHANGED", "DATA": "/layer"}` is sent to every client when a node is made or removed (the highest
+  path that changed; what happens within 50 ms is one message).
+- A WebSocket can write, so a page of another origin is refused (403): only a native client (no `Origin`) or a page of this
+  machine (localhost, a loopback or own address) gets in. At most 32 clients; a client more than 1 MB behind misses
+  frames instead of making the application wait.
+
+What is not there: `PATH_ADDED`, `PATH_REMOVED` and `PATH_RENAMED` (`PATH_CHANGED` says the same, and the tree has no
+rename), `CRITICAL`, and TCP for the OSC itself.
+
+Threads: an observer runs on the thread that wrote; `OscService` hands what a socket must send to its own thread.
+
 ## Applying a message
 
 `apply()` writes a parameter when its access allows it and the argument fits its type: a number for `Float` and `Int` (an

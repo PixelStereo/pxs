@@ -79,12 +79,14 @@ Node *Node::child(const QString &name) const
 Node &Tree::add(const QString &path)
 {
     Node *node = &m_root;
+    QString made; // the highest node this call makes
     for (const QString &name : names(path)) {
         auto &slot = node->m_children[name];
         if (!slot) {
             slot.reset(new Node);
             slot->m_name = name;
             slot->m_parent = node;
+            if (made.isEmpty()) made = slot->path();
             if (!m_pendingLocks.isEmpty() && m_pendingLocks.contains(slot->path())) {
                 slot->locked = true;
                 m_pendingLocks.removeAll(slot->path());
@@ -92,6 +94,7 @@ Node &Tree::add(const QString &path)
         }
         node = slot.get();
     }
+    if (!made.isEmpty() && m_structure) m_structure(made);
     return *node;
 }
 
@@ -198,10 +201,18 @@ bool Tree::remove(const QString &path)
 {
     Node *node = find(path);
     if (!node || !node->m_parent) return false;
-    return node->m_parent->m_children.erase(node->m_name) > 0;
+    const QString parent = node->m_parent->path();
+    const bool removed = node->m_parent->m_children.erase(node->m_name) > 0;
+    if (removed && m_structure) m_structure(parent);
+    return removed;
 }
 
-void Tree::clear() { m_root.m_children.clear(); m_root.description.clear(); }
+void Tree::clear()
+{
+    m_root.m_children.clear();
+    m_root.description.clear();
+    if (m_structure) m_structure(QStringLiteral("/"));
+}
 
 std::vector<Node *> Tree::match(const QString &pattern) const
 {
