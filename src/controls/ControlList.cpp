@@ -58,8 +58,18 @@ static void tidyArrays(Control &c)
         c.count = std::clamp(c.count, 1, Control::kPointsMax);
         if (!(c.max > c.min)) c.max = c.min + 1;
         c.def = std::clamp(c.def, c.min, c.max);
+        if (!c.balls.empty()) {
+            const size_t had = c.balls.size();
+            c.balls.resize(size_t(c.count), c.balls.back());
+            for (size_t i = had; i < c.balls.size(); ++i) c.balls[i].px.clear(), c.balls[i].py.clear(), c.balls[i].name.clear();
+        }
+        const size_t had = c.points.size();
         c.points.resize(size_t(c.count), {c.def, c.def});
-        for (auto &q : c.points) q = {std::clamp(q[0], c.min, c.max), std::clamp(q[1], c.min, c.max)};
+        for (size_t i = 0; i < c.points.size(); ++i) {
+            const auto r = c.pointRange(i);
+            if (i >= had) c.points[i] = {(r[0] + r[1]) / 2, (r[2] + r[3]) / 2};
+            c.points[i] = {std::clamp(c.points[i][0], r[0], r[1]), std::clamp(c.points[i][1], r[2], r[3])};
+        }
     }
     if (c.kind == Kind::Multi) {
         c.count = std::clamp(c.count, 2, Control::kMultiMax);
@@ -222,7 +232,8 @@ bool setPoints(std::vector<Control> &list, quint64 id, const std::vector<double>
     if (int(c->points.size()) != c->count) c->points.resize(size_t(c->count), {c->def, c->def});
     for (size_t i = 0; i < xy.size() && i < c->points.size() * 2; ++i) {
         if (!std::isfinite(xy[i])) continue;
-        const double next = std::clamp(xy[i], std::min(c->min, c->max), std::max(c->min, c->max));
+        const auto r = c->pointRange(i / 2);
+        const double next = i % 2 == 0 ? std::clamp(xy[i], r[0], r[1]) : std::clamp(xy[i], r[2], r[3]);
         double &field = c->points[i / 2][i % 2];
         if (field == next) continue;
         field = next;
@@ -332,22 +343,47 @@ static bool axis(const ParameterSource &source, quint64 scope, const QString &pa
 std::optional<Control> forParameters(const ParameterSource &source, quint64 scope, const QString &pathX, const QString &pathY, quint64 group)
 {
     ParamInfo x, y;
-    double lo, hi;
-    if (!axis(source, scope, pathX, &x, &lo, &hi) || !axis(source, scope, pathY, &y, &lo, &hi)) return std::nullopt;
+    double xlo, xhi, ylo, yhi;
+    if (!axis(source, scope, pathX, &x, &xlo, &xhi) || !axis(source, scope, pathY, &y, &ylo, &yhi)) return std::nullopt;
     if (!(x.access & ParamInfo::Write) || !(y.access & ParamInfo::Write) || pathX == pathY) return std::nullopt;
     Control c;
-    c.kind = Kind::Pad;
+    c.kind = Kind::Points; // a pad of one ball, bound to the two parameters; balls can be added to it
     c.group = group;
     c.name = x.name() + QStringLiteral(" / ") + y.name();
+    c.count = 1;
     c.min = 0;
     c.max = 1;
     c.step = 0.001;
     c.def = 0.5;
     c.boundScope = scope;
-    c.boundParam = pathX;
-    c.boundParam2 = pathY;
+    Ball ball;
+    ball.px = pathX;
+    ball.py = pathY;
+    ball.minX = xlo, ball.maxX = xhi, ball.minY = ylo, ball.maxY = yhi;
+    c.balls.push_back(ball);
+    c.points = {{(xlo + xhi) / 2, (ylo + yhi) / 2}};
     fillBound(c, source);
     return c;
+}
+
+// A Points control that is bound: each ball's two addresses are set from its point, in the ball's own range
+bool setBoundPoints(const Control &c, ParameterSource &source, const std::vector<double> &xy)
+{
+    bool any = false;
+    for (size_t i = 0; i < c.balls.size() && i * 2 + 1 < xy.size(); ++i) {
+        const Ball &b = c.balls[i];
+        const auto r = c.pointRange(i);
+        const double v[2] = {std::clamp(xy[i * 2], r[0], r[1]), std::clamp(xy[i * 2 + 1], r[2], r[3])};
+        const QString *paths[2] = {&b.px, &b.py};
+        for (int k = 0; k < 2; ++k) {
+            if (paths[k]->isEmpty() || !std::isfinite(v[k])) continue;
+            ParamInfo info;
+            if (!source.info(c.boundScope, *paths[k], &info) || !(info.access & ParamInfo::Write)) continue;
+            any |= source.setNumber(c.boundScope, *paths[k], v[k]);
+            source.touched(c.boundScope, *paths[k]);
+        }
+    }
+    return any;
 }
 
 bool setBoundPoint(const Control &c, ParameterSource &source, double x, double y)
@@ -371,6 +407,16 @@ bool setBoundPoint(const Control &c, ParameterSource &source, double x, double y
 
 void fillBound(Control &c, const ParameterSource &source)
 {
+    if (c.kind == Kind::Points && c.boundScope) { // the points are where the parameters are
+        for (size_t i = 0; i < c.balls.size() && i < c.points.size(); ++i) {
+            const Ball &b = c.balls[i];
+            const auto r = c.pointRange(i);
+            const QJsonValue vx = b.px.isEmpty() ? QJsonValue() : source.value(c.boundScope, b.px), vy = b.py.isEmpty() ? QJsonValue() : source.value(c.boundScope, b.py);
+            if (vx.isDouble()) c.points[i][0] = std::clamp(vx.toDouble(), r[0], r[1]);
+            if (vy.isDouble()) c.points[i][1] = std::clamp(vy.toDouble(), r[2], r[3]);
+        }
+        return;
+    }
     if (c.kind == Kind::Pad && !c.boundParam2.isEmpty()) {
         ParamInfo ix, iy;
         double xlo, xhi, ylo, yhi;

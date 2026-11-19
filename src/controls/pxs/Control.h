@@ -18,24 +18,70 @@
 
 namespace pxs::controls {
 
-// What moves a control's numbers once the hand has let go (Server.h runs it): friction slows what was thrown, attraction pulls it back to
-// the control's default (a spring), bounce is what is kept of the speed against the ends of the range (0: it stops there)
+// What moves a control's numbers (Server.h runs it), as in Lemur: Interpolate (the value glides to where the hand is) or Mass-Spring (it is
+// held to the hand by a spring and goes on when the hand lets go: friction slows it, the attraction pulls it back to its rest place, the
+// walls bounce it). All of it in the 0..1 of each number's range
 struct Physics {
-    bool on = false;
-    double friction = 3;  // 0..30, a rate per second
-    double attract = 0;   // 0..200, the spring's strength
-    double bounce = 0.5;  // 0..1
-    bool operator==(const Physics &o) const { return on == o.on && friction == o.friction && attract == o.attract && bounce == o.bounce; }
-    QJsonObject toJson() const { return QJsonObject{{"on", on}, {"friction", friction}, {"attract", attract}, {"bounce", bounce}}; }
+    enum Mode { None = 0, Interpolate = 1, MassSpring = 2 };
+    int mode = None;
+    double friction = 4;   // 0..30, a rate per second
+    double tension = 80;   // 0..400, the spring to the hand
+    double attract = 0;    // 0..200, the pull to the rest place once the hand has let go (0: it just goes on)
+    double wall = 0.6;     // 0..1, what is kept of the speed against an end of the range
+    double rate = 12;      // 0.5..60 per second, how fast Interpolate follows the hand
+    double restX = 0.5, restY = 0.5; // the rest place, 0..1
+    bool on() const { return mode != None; }
+    bool operator==(const Physics &o) const
+    {
+        return mode == o.mode && friction == o.friction && tension == o.tension && attract == o.attract && wall == o.wall && rate == o.rate && restX == o.restX && restY == o.restY;
+    }
+    QJsonObject toJson() const
+    {
+        return QJsonObject{{"mode", mode}, {"friction", friction}, {"tension", tension}, {"attract", attract}, {"wall", wall}, {"rate", rate}, {"restX", restX}, {"restY", restY}};
+    }
     void apply(const QJsonObject &p)
     {
         auto number = [&](const char *key, double lo, double hi, double &into) {
             if (p.value(key).isDouble() && std::isfinite(p.value(key).toDouble())) into = std::clamp(p.value(key).toDouble(), lo, hi);
         };
-        if (p.value("on").isBool()) on = p.value("on").toBool();
+        if (p.value("mode").isDouble()) mode = std::clamp(p.value("mode").toInt(), 0, 2);
         number("friction", 0, 30, friction);
+        number("tension", 0, 400, tension);
         number("attract", 0, 200, attract);
-        number("bounce", 0, 1, bounce);
+        number("wall", 0, 1, wall);
+        number("rate", 0.5, 60, rate);
+        number("restX", 0, 1, restX);
+        number("restY", 0, 1, restY);
+    }
+};
+
+// A ball of a Points control: where its X and Y go (OSC addresses on the control's device: empty, it is only on the page), the range of
+// each, its name, its color and its physics
+struct Ball {
+    QString name, px, py, accent;
+    double minX = 0, maxX = 1, minY = 0, maxY = 1;
+    Physics physics;
+    static QString cleanAddress(const QString &a) { return a.isEmpty() || (a.startsWith(QLatin1Char('/')) && a.size() < 200) ? a : QString(); }
+    QJsonObject toJson() const
+    {
+        return QJsonObject{{"name", name}, {"x", px}, {"y", py}, {"accent", accent}, {"minX", minX}, {"maxX", maxX}, {"minY", minY}, {"maxY", maxY}, {"physics", physics.toJson()}};
+    }
+    void apply(const QJsonObject &o)
+    {
+        if (o.value("name").isString()) name = o.value("name").toString().left(30);
+        if (o.value("x").isString()) px = cleanAddress(o.value("x").toString());
+        if (o.value("y").isString()) py = cleanAddress(o.value("y").toString());
+        if (o.contains("accent")) {
+            const QString a = o.value("accent").toString();
+            accent = a.size() == 7 && a[0] == QLatin1Char('#') ? a.toLower() : QString();
+        }
+        auto number = [&](const char *key, double &into) {
+            if (o.value(key).isDouble() && std::isfinite(o.value(key).toDouble())) into = o.value(key).toDouble();
+        };
+        number("minX", minX), number("maxX", maxX), number("minY", minY), number("maxY", maxY);
+        if (!(maxX > minX)) maxX = minX + 1;
+        if (!(maxY > minY)) maxY = minY + 1;
+        if (o.value("physics").isObject()) physics.apply(o.value("physics").toObject());
     }
 };
 
@@ -56,7 +102,7 @@ struct Control {
     // of its gesture (a Slider: 1 linear, above 1 fine at the low end, below 1 fine at the high end) and its accent color ("#rrggbb")
     QString widget, accent;
     double curve = 1;
-    Physics physics; // Slider, Pad, Multi, Points: what moves its numbers after a gesture
+    Physics physics; // Slider, Pad, Multi: what moves its numbers (a Points control has one for each ball)
     // A view of a parameter: where it is (the application's own scope: a layer in NyxMap, a device in an explorer; 0: the application's
     // own) and its address there. The control has no value of its own: it shows the parameter and sets it, so that a change made anywhere
     // shows on the page too
@@ -81,6 +127,9 @@ struct Control {
     static constexpr int kMultiMax = 32;
     // Points: a pad with several points (1..16), each an X and a Y within min..max; control/<key>/p1/x, /p1/y, /p2/x…; `count` is how many
     std::vector<std::array<double, 2>> points;
+    // Points, from an application that gives them each a place of their own (an explorer): one ball for each point, with its addresses, range,
+    // color and physics. Empty: the points are plain, all in min..max
+    std::vector<Ball> balls;
     static constexpr int kPointsMax = 16;
     static constexpr const char *const kAdsrKeys[4] = {"attack", "decay", "sustain", "release"};
 
@@ -126,7 +175,24 @@ struct Control {
         }
         return out;
     }
+    // A view of parameters: a parameter, or a Points control (whose balls give theirs)
+    bool bound() const { return !boundParam.isEmpty() || (kind == Kind::Points && boundScope != 0); }
+    QStringList boundPaths() const // every address this control reads and sets
+    {
+        QStringList out;
+        for (const QString &p : {boundParam, boundParam2}) if (!p.isEmpty()) out << p;
+        for (const Ball &b : balls) for (const QString &p : {b.px, b.py}) if (!p.isEmpty()) out << p;
+        return out;
+    }
+    // The range of a point's X and Y (a ball has its own)
+    std::array<double, 4> pointRange(size_t i) const { return i < balls.size() ? std::array<double, 4>{balls[i].minX, balls[i].maxX, balls[i].minY, balls[i].maxY} : std::array<double, 4>{min, max, min, max}; }
+    const Physics &physicsOf(size_t point) const { return point < balls.size() ? balls[point].physics : physics; }
     bool physical() const { return kind == Kind::Slider || kind == Kind::Pad || kind == Kind::Multi || kind == Kind::Points; }
+    bool moving() const // some of its numbers have a physics
+    {
+        if (kind == Kind::Points && !balls.empty()) { for (const Ball &b : balls) if (b.physics.on()) return true; return false; }
+        return physical() && physics.on();
+    }
     static QString kindKey(Kind k)
     {
         static const char *const keys[] = {"slider", "toggle", "choice", "button", "color", "pad", "group", "adsr", "multi", "points"};
@@ -166,7 +232,7 @@ struct Control {
         QJsonObject o{{"id", QString::number(id)}, {"name", name}, {"key", key}, {"kind", kindKey(kind)}};
         if (group) o["group"] = QString::number(group);
         if (span != 1) o["span"] = span;
-        if (!boundParam.isEmpty()) {
+        if (bound()) {
             QJsonObject b{{"scope", QString::number(boundScope)}, {"param", boundParam}};
             if (!boundParam2.isEmpty()) b["param2"] = boundParam2;
             if (!boundLabel.isEmpty()) b["label"] = boundLabel;
@@ -214,6 +280,11 @@ struct Control {
             QJsonArray list;
             for (const auto &q : points) list.append(QJsonArray{q[0], q[1]});
             o["points"] = list;
+            if (!balls.empty()) {
+                QJsonArray bl;
+                for (const Ball &b : balls) bl.append(b.toJson());
+                o["balls"] = bl;
+            }
             break;
         }
         case Kind::Multi: {
@@ -254,6 +325,20 @@ struct Control {
             number("count", n);
             count = std::clamp(int(n), 2, kMultiMax);
         }
+        if (kind == Kind::Points && p.value("balls").isArray()) { // the balls, as the page has them: a new one is a copy of the last
+            const QJsonArray list = p.value("balls").toArray();
+            std::vector<Ball> next;
+            for (int i = 0; i < list.size() && i < kPointsMax; ++i) {
+                Ball b = size_t(i) < balls.size() ? balls[size_t(i)] : (balls.empty() ? Ball{} : balls.back());
+                if (size_t(i) >= balls.size()) { b.px.clear(); b.py.clear(); b.name.clear(); if (balls.empty()) b.minX = b.minY = min, b.maxX = b.maxY = max; }
+                b.apply(list.at(i).toObject());
+                next.push_back(b);
+            }
+            if (!next.empty()) {
+                balls = next;
+                count = int(balls.size());
+            }
+        }
         if (kind == Kind::Points) {
             double n = count;
             number("count", n);
@@ -280,7 +365,7 @@ struct Control {
         QJsonObject o{{"id", QString::number(id)}, {"name", name}, {"key", key}, {"kind", kindKey(kind)}};
         if (group) o["group"] = QString::number(group);
         o["span"] = span;
-        if (!boundParam.isEmpty() && !boundLabel.isEmpty()) o["dest"] = boundLabel;
+        if (bound() && !boundLabel.isEmpty()) o["dest"] = boundLabel;
         if (!widget.isEmpty()) o["widget"] = widget;
         if (!accent.isEmpty()) o["accent"] = accent;
         if (curve != 1) o["curve"] = curve;
@@ -295,6 +380,11 @@ struct Control {
             QJsonArray list;
             for (const auto &q : points) list.append(QJsonArray{q[0], q[1]});
             o["points"] = list;
+            if (!balls.empty()) {
+                QJsonArray bl;
+                for (const Ball &b : balls) bl.append(b.toJson());
+                o["balls"] = bl;
+            }
             break;
         }
         case Kind::Multi: {
@@ -357,7 +447,7 @@ struct Control {
         c.kind = kindFromKey(o.value("kind").toString());
         c.group = o.value("group").toString().toULongLong();
         c.span = std::clamp(o.value("span").toInt(1), 1, 4);
-        if (const QJsonObject b = o.value("bind").toObject(); !b.value("param").toString().isEmpty()) {
+        if (const QJsonObject b = o.value("bind").toObject(); !b.value("param").toString().isEmpty() || (c.kind == Kind::Points && b.contains("scope"))) {
             c.boundScope = b.value("scope").toString().toULongLong();
             c.boundParam = b.value("param").toString();
             c.boundParam2 = b.value("param2").toString();
@@ -405,9 +495,18 @@ struct Control {
             c.def = std::clamp(finite(o.value("default").toDouble((c.min + c.max) / 2), (c.min + c.max) / 2), c.min, c.max);
             const QJsonArray a = o.value("points").toArray();
             c.points.assign(size_t(c.count), {c.def, c.def});
-            for (int i = 0; i < c.count && i < a.size(); ++i) {
+            const QJsonArray bl = o.value("balls").toArray();
+            for (int i = 0; i < c.count && i < bl.size(); ++i) {
+                Ball b;
+                b.minX = b.minY = c.min, b.maxX = b.maxY = c.max;
+                b.apply(bl.at(i).toObject());
+                c.balls.push_back(b);
+            }
+            if (!c.balls.empty()) c.balls.resize(size_t(c.count), c.balls.back());
+            for (int i = 0; i < c.count; ++i) {
                 const QJsonArray q = a.at(i).toArray();
-                c.points[size_t(i)] = {std::clamp(finite(q.at(0).toDouble(c.def), c.def), c.min, c.max), std::clamp(finite(q.at(1).toDouble(c.def), c.def), c.min, c.max)};
+                const auto r = c.pointRange(size_t(i));
+                c.points[size_t(i)] = {std::clamp(finite(q.at(0).toDouble((r[0] + r[1]) / 2), c.def), r[0], r[1]), std::clamp(finite(q.at(1).toDouble((r[2] + r[3]) / 2), c.def), r[2], r[3])};
             }
             break;
         }

@@ -385,6 +385,10 @@ void Server::onFrame(Client &c, int opcode, const QByteArray &payload)
         const quint64 id = o.value("id").toString().toULongLong();
         if (!id) return;
         bool moved = false;
+        if (intercept(id, type, o)) {
+            emit controlMoved();
+            break;
+        }
         if (type == QLatin1String("set") && o.value("v").isDouble()) {
             moved = m_backend->setValue(id, o.value("v").toDouble());
         } else if (type == QLatin1String("point")) {
@@ -407,10 +411,7 @@ void Server::onFrame(Client &c, int opcode, const QByteArray &payload)
             const QJsonArray rgb = o.value("rgb").toArray();
             moved = rgb.size() == 3 && m_backend->setColor(id, rgb[0].toDouble(), rgb[1].toDouble(), rgb[2].toDouble());
         }
-        if (moved) {
-            touched(id);
-            emit controlMoved();
-        }
+        if (moved) emit controlMoved();
         break;
     }
     case websocket::Close:
@@ -459,86 +460,81 @@ bool Server::redo()
     return true;
 }
 
-// A gesture's messages give the control a speed (smoothed); when the hand lets go, its physics goes on from there
-void Server::touched(quint64 id)
+// A control with a physics: what the hand sets is where the number should go, and the physics brings it there (and goes on once the hand lets go)
+bool Server::intercept(quint64 id, const QString &type, const QJsonObject &o)
 {
+    if (type != QLatin1String("set") && type != QLatin1String("point") && type != QLatin1String("points") && type != QLatin1String("multi")) return false;
     const std::optional<Control> c = m_backend->control(id);
-    if (!c || !c->physics.on || !c->physical()) {
+    if (!c || !c->moving()) {
         m_bodies.remove(id);
-        return;
+        return false;
     }
-    Body &b = m_bodies[id];
+    std::vector<double> want;
+    if (type == QLatin1String("set")) want = {o.value("v").toDouble(std::nan(""))};
+    else for (const QJsonValue &v : o.value(type == QLatin1String("point") ? "xy" : "v").toArray()) want.push_back(v.toDouble(std::nan("")));
+    if (want.empty()) return false;
     const std::vector<double> now = c->numbers();
-    const qint64 t = m_clock.elapsed();
-    const double dt = double(t - b.movedAt) / 1000.0;
-    if (b.last.size() == now.size() && dt > 0.001 && dt < 0.15 && c->max > c->min) {
-        b.v.resize(now.size(), 0.0);
-        for (size_t i = 0; i < now.size(); ++i) b.v[i] = 0.5 * b.v[i] + 0.5 * (now[i] - b.last[i]) / (c->max - c->min) / dt;
-    } else {
-        b.v.assign(now.size(), 0.0);
+    if (want.size() > now.size()) want.resize(now.size());
+    auto found = m_bodies.find(id);
+    if (found == m_bodies.end() || found->pos.size() != now.size()) {
+        physics::Body b;
+        b.pos = b.target = physics::toUnits(*c, now);
+        b.vel.assign(now.size(), 0.0);
+        found = m_bodies.insert(id, b);
     }
-    b.last = now;
-    b.movedAt = t;
+    physics::Body &b = *found;
+    const std::vector<double> units = physics::toUnits(*c, want);
+    for (size_t i = 0; i < units.size(); ++i)
+        if (std::isfinite(want[i])) b.target[i] = units[i];
     b.held = true;
-    b.moving = false;
+    b.moving = true;
+    b.movedAt = m_clock.elapsed();
+    if (!m_physics.isActive()) m_physics.start();
+    return true;
 }
 
 void Server::released(quint64 id)
 {
-    const std::optional<Control> c = m_backend->control(id);
     auto found = m_bodies.find(id);
-    if (!c || !c->physics.on || !c->physical()) {
-        m_bodies.remove(id);
-        return;
-    }
-    if (found == m_bodies.end()) found = m_bodies.insert(id, Body{c->numbers(), std::vector<double>(c->numbers().size(), 0.0), 0, false, false});
-    Body &b = *found;
-    if (m_clock.elapsed() - b.movedAt > 80) std::fill(b.v.begin(), b.v.end(), 0.0); // the hand had stopped: nothing is thrown
-    b.held = false;
-    b.moving = true;
+    if (found == m_bodies.end()) return;
+    found->held = false;
+    found->moving = true;
     if (!m_physics.isActive()) m_physics.start();
 }
 
 void Server::stepPhysics()
 {
-    bool any = false;
     const double dt = 0.016;
+    const qint64 now = m_clock.elapsed();
+    bool any = false;
     for (auto it = m_bodies.begin(); it != m_bodies.end();) {
-        Body &b = it.value();
-        if (b.held || !b.moving) {
-            ++it;
-            continue;
-        }
+        physics::Body &b = it.value();
         const std::optional<Control> c = m_backend->control(it.key());
-        if (!c || !c->physics.on) {
+        if (!c || !c->moving()) {
             it = m_bodies.erase(it);
             continue;
         }
-        std::vector<double> x = c->numbers();
-        b.v.resize(x.size(), 0.0);
-        b.moving = physics::step(*c, x, b.v, dt);
-        bool ok = true;
-        switch (c->kind) {
-        case Control::Kind::Slider: ok = m_backend->setValue(c->id, x[0]); break;
-        case Control::Kind::Pad: ok = x.size() == 2 && m_backend->setPoint(c->id, x[0], x[1]); break;
-        case Control::Kind::Multi: ok = m_backend->setMulti(c->id, x); break;
-        case Control::Kind::Points: ok = m_backend->setPoints(c->id, x); break;
-        default: ok = false; break;
+        if (b.held && now - b.movedAt > 4000) b.held = false; // the hand is gone without a word (a lost connection)
+        const std::vector<double> before = b.pos;
+        b.moving = physics::step(*c, b, dt);
+        if (b.pos != before) {
+            const std::vector<double> x = physics::fromUnits(*c, b.pos);
+            switch (c->kind) {
+            case Control::Kind::Slider: m_backend->setValue(c->id, x[0]); break;
+            case Control::Kind::Pad: if (x.size() == 2) m_backend->setPoint(c->id, x[0], x[1]); break;
+            case Control::Kind::Multi: m_backend->setMulti(c->id, x); break;
+            case Control::Kind::Points: m_backend->setPoints(c->id, x); break;
+            default: break;
+            }
         }
-        if (!ok) b.moving = false;
-        b.last = x;
+        if (!b.moving && !b.held) {
+            it = m_bodies.erase(it);
+            continue;
+        }
         any |= b.moving;
-        if (!b.moving) {
-            it = m_bodies.erase(it);
-            continue;
-        }
         ++it;
     }
-    if (!any) {
-        bool pending = false;
-        for (const Body &b : std::as_const(m_bodies)) pending |= b.moving;
-        if (!pending) m_physics.stop();
-    }
+    if (!any) m_physics.stop();
 }
 
 // Every 50 ms: the list to a client that has not got its latest form, then the values that changed

@@ -99,6 +99,7 @@ input[type=color] { width:100%; height:100%; min-height:40px; max-height:80px; b
 .pad::before, .pad::after { content:""; position:absolute; background:#34343d; }
 .pad::before { left:50%; top:0; bottom:0; width:1px; } .pad::after { top:50%; left:0; right:0; height:1px; }
 .pad i.pt { display:flex; align-items:center; justify-content:center; font:700 12px -apple-system, system-ui, sans-serif; color:#14141a; background:#f2f2f5; border-color:hsl(var(--h),70%,60%); box-shadow:0 0 12px hsl(var(--h),70%,60%); pointer-events:none; }
+.pad i.pt.col { border-color:var(--bc); box-shadow:0 0 12px var(--bc); }
 .pad i.pt.hot { background:hsl(var(--h),70%,70%); }
 .pad i { position:absolute; width:26px; height:26px; margin:-13px 0 0 -13px; border-radius:50%; background:#f2f2f5; border:4px solid var(--a); box-shadow:0 0 12px var(--a); pointer-events:none; }
 )CSS";
@@ -346,18 +347,27 @@ inline constexpr char kScriptB2[] = R"JS(
   function led(c) { const root = el('div', 'led'); return { el: root, set: x => root.classList.toggle('on', x >= 0.5) }; }
   // A pad with several points: each finger takes the nearest free point and moves it (as many at once as there are fingers)
   function pointsPad(c, io) {
-    const pad = el('div', 'pad'), n = c.count, span = (c.max - c.min) || 1, dots = [], held = {};
-    let v = [].concat.apply([], c.points || []); while (v.length < n * 2) v.push(c.min + span / 2);
-    for (let i = 0; i < n; i++) { const d = el('i', 'pt', String(i + 1)); d.style.setProperty('--h', String(Math.round((190 + 62 * i) % 360))); pad.appendChild(d); dots.push(d); }
-    const draw = () => dots.forEach((d, i) => { d.style.left = ((v[2 * i] - c.min) / span * 100) + '%'; d.style.top = ((1 - (v[2 * i + 1] - c.min) / span) * 100) + '%'; });
-    const at = p => { const r = pad.getBoundingClientRect(); return [c.min + clamp((p.x - r.left) / r.width, 0, 1) * span, c.min + clamp(1 - (p.y - r.top) / r.height, 0, 1) * span]; };
+    const pad = el('div', 'pad'), n = c.count, dots = [], held = {}, balls = c.balls || [];
+    const rg = i => balls[i] ? [balls[i].minX, balls[i].maxX, balls[i].minY, balls[i].maxY] : [c.min, c.max, c.min, c.max];
+    const physical = i => balls[i] && balls[i].physics && balls[i].physics.mode > 0; // its dot shows where the physics has put it, not the hand
+    let v = [].concat.apply([], c.points || []); while (v.length < n * 2) { const r = rg(v.length >> 1); v.push((v.length & 1 ? r[2] + r[3] : r[0] + r[1]) / 2); }
+    for (let i = 0; i < n; i++) {
+      const d = el('i', 'pt', String(i + 1)); d.style.setProperty('--h', String(Math.round((190 + 62 * i) % 360)));
+      if (balls[i] && balls[i].accent) { d.classList.add('col'); d.style.setProperty('--bc', balls[i].accent); }
+      pad.appendChild(d); dots.push(d);
+    }
+    const draw = () => dots.forEach((d, i) => { const r = rg(i); d.style.left = ((v[2 * i] - r[0]) / (r[1] - r[0]) * 100) + '%'; d.style.top = ((1 - (v[2 * i + 1] - r[2]) / (r[3] - r[2])) * 100) + '%'; });
+    const at = (p, i) => { const b = pad.getBoundingClientRect(), r = rg(i); return [r[0] + clamp((p.x - b.left) / b.width, 0, 1) * (r[1] - r[0]), r[2] + clamp(1 - (p.y - b.top) / b.height, 0, 1) * (r[3] - r[2])]; };
     const taken = i => Object.keys(held).some(k => held[k] === i);
-    const put = p => { const i = held[p.id]; if (i === undefined) return; const q = at(p); v[2 * i] = Number(q[0].toFixed(4)); v[2 * i + 1] = Number(q[1].toFixed(4)); dots[i].classList.add('hot'); draw(); io.input(v.slice()); };
-    presses(pad, { down: p => { const q = at(p); let best = -1, bd = 1e18;
-        for (let i = 0; i < n; i++) { if (taken(i)) continue; const dx = v[2 * i] - q[0], dy = v[2 * i + 1] - q[1], dd = dx * dx + dy * dy; if (dd < bd) { bd = dd; best = i; } }
+    const put = p => { const i = held[p.id]; if (i === undefined) return; const q = at(p, i), w = v.slice(); w[2 * i] = Number(q[0].toFixed(4)); w[2 * i + 1] = Number(q[1].toFixed(4));
+      if (!physical(i)) v = w; dots[i].classList.add('hot'); draw(); io.input(w); };
+    // The nearest free ball to the finger, in the unit square (the balls have ranges of their own)
+    const unit = (i, q) => { const r = rg(i); return [(q[0] - r[0]) / (r[1] - r[0]), (q[1] - r[2]) / (r[3] - r[2])]; };
+    presses(pad, { down: p => { let best = -1, bd = 1e18; const b = pad.getBoundingClientRect(), f = [clamp((p.x - b.left) / b.width, 0, 1), clamp(1 - (p.y - b.top) / b.height, 0, 1)];
+        for (let i = 0; i < n; i++) { if (taken(i)) continue; const u = unit(i, [v[2 * i], v[2 * i + 1]]), dx = u[0] - f[0], dy = u[1] - f[1], dd = dx * dx + dy * dy; if (dd < bd) { bd = dd; best = i; } }
         if (best < 0) return false; if (!Object.keys(held).length) io.begin(); held[p.id] = best; put(p); },
       move: put, up: p => { put(p); const i = held[p.id]; if (i !== undefined) dots[i].classList.remove('hot'); delete held[p.id]; if (!Object.keys(held).length) io.end(); } });
-    return { el: pad, resize: draw, set: x => { if (!Object.keys(held).length) { v = x.slice(); while (v.length < n * 2) v.push(c.min + span / 2); draw(); } } };
+    return { el: pad, resize: draw, set: x => { const any = Object.keys(held).length > 0; for (let i = 0; i < x.length && i < n * 2; i++) if (!any || physical(i >> 1)) v[i] = x[i]; draw(); } };
   }
   // A row of sliders in one tile (as Lemur's and NexusUI's multi-slider): a finger across the bars sets each one it crosses
   function multi(c, io, horizontal) {
@@ -529,6 +539,46 @@ inline constexpr char kScriptD[] = R"JS(
   const flush = () => { clearTimeout(sheetTimer); if (sheetFor && Object.keys(sheetProps).length) send({ t: 'edit', id: sheetFor, props: sheetProps }); sheetProps = {}; };
   const push = props => { sheetFor = sheetId; sheetProps = Object.assign(sheetProps, props); clearTimeout(sheetTimer); sheetTimer = setTimeout(flush, 220); };
   function closeSheet() { flush(); sheetId = 0; $('#sheet').classList.remove('open'); selectTile(0); }
+  // The physics of a number, as Lemur has it: Interpolate (it glides to the hand) or Mass-Spring (a spring to the hand; once let go it goes on by
+  // itself: friction, the pull to a rest place, the bounce on the walls)
+  function physFields(host, ph, save) {
+    const p = Object.assign({}, ph), box = el('div');
+    host.appendChild(el('label', '', 'Physics'));
+    const mode = el('select'); [['None', 0], ['Interpolate (glides to the hand)', 1], ['Mass-Spring (goes on by itself)', 2]].forEach(m => { const o = el('option', '', m[0]); o.value = m[1]; mode.appendChild(o); });
+    mode.value = p.mode || 0; host.appendChild(mode); host.appendChild(box);
+    const knob = (label, key, lo, hi, root) => { box.appendChild(el('label', '', label)); const r = el('input'), h = el('div', 'hint'); r.type = 'range'; r.min = 0; r.max = 1000;
+      const to = t => root ? lo + t * t * (hi - lo) : lo + t * (hi - lo), from = v => { const t = Math.max(0, Math.min(1, (v - lo) / (hi - lo))); return root ? Math.sqrt(t) : t; };
+      r.value = Math.round(from(p[key]) * 1000); const say = () => { h.textContent = Number(p[key]).toFixed(hi > 50 ? 0 : 2); };
+      r.oninput = () => { p[key] = Number(to(Number(r.value) / 1000).toFixed(3)); say(); save(Object.assign({}, p)); }; say(); box.appendChild(r); box.appendChild(h); };
+    const build = () => { box.textContent = '';
+      if (p.mode === 1) knob('Speed', 'rate', 0.5, 60, true);
+      if (p.mode === 2) { knob('Tension (the spring to the hand)', 'tension', 0, 400, true); knob('Friction', 'friction', 0, 30, true); knob('Attraction to the rest place', 'attract', 0, 200, true);
+        knob('Wall bounce', 'wall', 0, 1, false); knob('Rest place X', 'restX', 0, 1, false); knob('Rest place Y', 'restY', 0, 1, false); } };
+    mode.onchange = () => { p.mode = Number(mode.value); build(); save(Object.assign({}, p)); }; build();
+  }
+  // A pad of balls: a menu of the balls with + and -, and the range, addresses, color and physics of the chosen one
+  function ballEditor(sh, c, field, text, numeric) {
+    const balls = c.balls.map(b => JSON.parse(JSON.stringify(b))); let sel = 0;
+    const save = () => push({ balls: balls.map(b => Object.assign({}, b)) });
+    const bar = el('div', 'row'), menu = el('select'), plus = el('button', '', '+'), minus = el('button', '', '−'), box = el('div');
+    const fill = () => { menu.textContent = ''; balls.forEach((b, i) => { const o = el('option', '', 'Ball ' + (i + 1) + (b.name ? ' · ' + b.name : '')); o.value = i; menu.appendChild(o); }); menu.value = sel; };
+    plus.title = 'Add a ball'; minus.title = 'Remove this ball';
+    plus.onclick = () => { if (balls.length >= 16) return; balls.push(Object.assign({}, JSON.parse(JSON.stringify(balls[sel])), { x: '', y: '', name: '' })); sel = balls.length - 1; save(); fill(); show(); };
+    minus.onclick = () => { if (balls.length < 2) return; balls.splice(sel, 1); sel = Math.min(sel, balls.length - 1); save(); fill(); show(); };
+    menu.onchange = () => { sel = Number(menu.value); show(); };
+    bar.appendChild(menu); bar.appendChild(plus); bar.appendChild(minus); sh.appendChild(el('label', '', 'Balls')); sh.appendChild(bar); sh.appendChild(box);
+    const show = () => { const b = balls[sel]; box.textContent = '';
+      const add = (l, n) => { box.appendChild(el('label', '', l)); box.appendChild(n); };
+      add('Ball name', text(b.name || '', v => { b.name = v; save(); }));
+      add('OSC address X', text(b.x || '', v => { b.x = v; save(); })); add('OSC address Y', text(b.y || '', v => { b.y = v; save(); }));
+      const r1 = el('div', 'row'), r2 = el('div', 'row'), cell = (l, n) => { const d = el('div'); d.appendChild(el('label', '', l)); d.appendChild(n); return d; };
+      r1.appendChild(cell('X min', numeric(b.minX, v => { b.minX = v; save(); }))); r1.appendChild(cell('X max', numeric(b.maxX, v => { b.maxX = v; save(); })));
+      r2.appendChild(cell('Y min', numeric(b.minY, v => { b.minY = v; save(); }))); r2.appendChild(cell('Y max', numeric(b.maxY, v => { b.maxY = v; save(); }))); box.appendChild(r1); box.appendChild(r2);
+      const sw = el('div', 'sw8'); accents.forEach(a => { const k = el('button', (b.accent || '') === a ? 'on' : '', ''); k.style.background = a || '#34343b'; k.onclick = () => { b.accent = a; save(); sw.querySelectorAll('button').forEach(o => o.classList.remove('on')); k.classList.add('on'); }; sw.appendChild(k); });
+      add('Color', sw); physFields(box, b.physics || {}, ph => { b.physics = ph; save(); });
+    };
+    fill(); show();
+  }
   function openSheet(id) {
     const c = byId[id]; if (!c) return;
     sheetId = id; selectTile(id);
@@ -554,7 +604,7 @@ inline constexpr char kScriptD[] = R"JS(
     }
     if (c.kind === 'adsr') field('Longest time (s)', numeric(c.max, v => push({ max: v })));
     if (c.kind === 'multi') field('Sliders', numeric(c.count, v => push({ count: Math.round(v) }), 1));
-    if (c.kind === 'points') { field('Points', numeric(c.count, v => push({ count: Math.round(v) }), 1)); const r3 = el('div', 'row'), c3 = (l, n) => { const d = el('div'); d.appendChild(el('label', '', l)); d.appendChild(n); return d; }; r3.appendChild(c3('Min', numeric(c.min, v => push({ min: v })))); r3.appendChild(c3('Max', numeric(c.max, v => push({ max: v })))); sh.appendChild(r3); }
+    if (c.kind === 'points' && !(c.balls && c.balls.length)) { field('Points', numeric(c.count, v => push({ count: Math.round(v) }), 1)); const r3 = el('div', 'row'), c3 = (l, n) => { const d = el('div'); d.appendChild(el('label', '', l)); d.appendChild(n); return d; }; r3.appendChild(c3('Min', numeric(c.min, v => push({ min: v })))); r3.appendChild(c3('Max', numeric(c.max, v => push({ max: v })))); sh.appendChild(r3); }
     if (c.kind === 'slider' || c.kind === 'multi') {
       const row = el('div', 'row'), cell2 = (l, n) => { const d = el('div'); d.appendChild(el('label', '', l)); d.appendChild(n); return d; };
       row.appendChild(cell2('Min', numeric(c.min, v => push({ min: v })))); row.appendChild(cell2('Max', numeric(c.max, v => push({ max: v })))); sh.appendChild(row);
@@ -567,16 +617,8 @@ inline constexpr char kScriptD[] = R"JS(
       say(c.curve || 1); sh.appendChild(r); sh.appendChild(hint);
       }
     }
-    if (c.physics) {
-      const ph = Object.assign({}, c.physics), save = () => push({ physics: Object.assign({}, ph) });
-      const on = el('label', 'chk'), cb = el('input'); cb.type = 'checkbox'; cb.checked = !!ph.on; cb.onchange = () => { ph.on = cb.checked; save(); box.hidden = !ph.on; };
-      on.appendChild(cb); on.appendChild(document.createTextNode(' Physics (it goes on after the hand lets go)')); sh.appendChild(on);
-      const box = el('div'); box.hidden = !ph.on;
-      const knob = (label, key, max, hint) => { box.appendChild(el('label', '', label)); const r = el('input'); r.type = 'range'; r.min = 0; r.max = 100; r.value = Math.round(Math.sqrt(ph[key] / max) * 100);
-        const h = el('div', 'hint'), say = () => { h.textContent = hint + ' ' + ph[key].toFixed(key === 'bounce' ? 2 : 1); }; r.oninput = () => { const t = Number(r.value) / 100; ph[key] = Number((key === 'bounce' ? t * t : t * t * max).toFixed(3)); say(); save(); }; say(); box.appendChild(r); box.appendChild(h); };
-      knob('Friction', 'friction', 30, 'slows it down:'); knob('Attraction', 'attract', 200, 'pulls it back to its default:'); knob('Bounce', 'bounce', 1, 'kept of its speed at the ends:');
-      sh.appendChild(box);
-    }
+    if (c.kind === 'points' && c.balls && c.balls.length) ballEditor(sh, c, field, text, numeric);
+    else if (c.physics) physFields(sh, c.physics, ph => push({ physics: ph }));
     const del = el('button', 'del', 'Delete this control'); del.onclick = () => { if (confirm('Delete "' + c.name + '"? Its OSC address goes with it.')) { send({ t: 'remove', id: c.id }); closeSheet(); } };
     sh.appendChild(del);
     sh.classList.add('open');
