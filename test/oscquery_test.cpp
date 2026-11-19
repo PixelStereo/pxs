@@ -42,7 +42,12 @@ int main(int argc, char **argv)
     CHECK(!body("/show/go").contains("PXS_KIND") && !body("/show/go").contains("VALUE") && body("/show/go")["ACCESS"] == 2);
     CHECK(!body("/detect/peak").contains("VALUE") && body("/detect/peak")["ACCESS"] == 1);
     CHECK(body("/level?VALUE")["VALUE"].toArray().at(0).toDouble() == 0.5);
-    CHECK(q.answer("GET", "/nothing").status == 404 && q.answer("GET", "/detect/peak?VALUE").status == 204);
+    CHECK(q.answer("GET", "/nothing").status == 404 && true);
+    // What an attribute that is absent answers: an empty object, and 204 only for a value that cannot be read or an attribute this server lacks
+    CHECK(q.answer("GET", "/detect/peak?VALUE").status == 200 && q.answer("GET", "/detect/peak?VALUE").body == "{}");
+    CHECK(q.answer("GET", "/show?TYPE").status == 200 && q.answer("GET", "/show?TYPE").body == "{}");
+    CHECK(q.answer("GET", "/show/go?VALUE").status == 204 && q.answer("GET", "/level?NOPE").status == 204);
+    CHECK(body("/?HOST_INFO")["EXTENSIONS"].toObject().value("CLIPMODE") == true);
     CHECK(q.answer("POST", "/").status == 405);
 
     // UDP in: a message and a parameter written; UDP out: the feedback and the signal come back to the sender

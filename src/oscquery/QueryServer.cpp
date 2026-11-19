@@ -120,8 +120,15 @@ QueryServer::Response QueryServer::answer(const QString &method, const QByteArra
             return resp;
         }
         if (json.isEmpty()) {
-            resp.status = 204; // the attribute has no value
-            return resp;
+            const Node *node = m_tree->find(path);
+            const bool known = query == QLatin1String("FULL_PATH") || query == QLatin1String("CONTENTS") || query == QLatin1String("TYPE") ||
+                               m_extensions.value(query).toBool() || node->attributes.count(query) > 0;
+            // 204: a value asked of what cannot be read, or an attribute this server does not have; otherwise the node
+            // has no such attribute (a container's TYPE, a signal's VALUE): an empty object
+            if ((query == QLatin1String("VALUE") && !(node->access & 1)) || !known) {
+                resp.status = 204;
+                return resp;
+            }
         }
     } else {
         json = m_tree->json(path);

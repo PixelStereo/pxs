@@ -166,6 +166,43 @@ int main(int argc, char **argv)
         CHECK(t.apply({"/x", "f", {0.7}}) == 1 && heard == 1);
         CHECK(!t.find("/x")->displayLabel().isEmpty());
     }
+    { // Conformity to the OSCQuery proposal
+        pxs::Tree t;
+        // A space or any of # * , ? [ ] { } becomes '_' (OSC does not allow them); the same name finds the node
+        t.add("/my layer/a*b");
+        CHECK(t.find("/my layer/a*b") && t.find("/my_layer/a_b") && t.find("/my_layer/a_b")->path() == "/my_layer/a_b");
+        // A bounded parameter says it keeps a written value within the limits
+        double held = 0;
+        auto p = make("/v", Parameter::Type::Float);
+        p->range(0, 1).bind([&] { return QVariant(held); }, [&](const QVariant &x) { held = x.toDouble(); });
+        t.add("/v", std::move(p));
+        CHECK(t.json("/v")["CLIPMODE"].toArray().at(0) == "both" && pxs::Tree::defaultExtensions().contains("CLIPMODE"));
+        // The values follow the type tags: numbers, a string, a colour as #RRGGBBAA, nothing for a blob, arrays as arrays
+        pxs::Node &mix = t.add("/mix");
+        mix.type = "i[ff]srb";
+        mix.access = 1;
+        mix.get = [] { return QVariantList{3, 0.5, 1.5, QStringLiteral("x"), qlonglong(0xFA6432FF), QVariant()}; };
+        const QJsonArray values = t.json("/mix")["VALUE"].toArray();
+        CHECK(values.size() == 5 && values[0] == 3 && values[1].toArray().size() == 2 && values[1].toArray()[1] == 1.5 && values[2] == "x" &&
+              values[3] == "#FA6432FF" && values[4].isNull());
+        CHECK(!t.json("/mix").contains("CLIPMODE")); // no limits, nothing to say
+        // A write that causes another write (a mapping driving a second node) tells each node once
+        pxs::Tree r;
+        double a = 0, b = 0;
+        int heardA = 0, heardB = 0;
+        pxs::Node &na = r.add("/a");
+        na.type = "f";
+        na.access = 3;
+        na.get = [&] { return QVariantList{a}; };
+        na.set = [&](const QVariantList &x) { a = x.value(0).toDouble(); r.apply({"/b", "f", {a}}); r.changed("/a"); return true; };
+        pxs::Node &nb = r.add("/b");
+        nb.type = "f";
+        nb.access = 3;
+        nb.get = [&] { return QVariantList{b}; };
+        nb.set = [&](const QVariantList &x) { b = x.value(0).toDouble(); return true; };
+        r.addObserver([&](const pxs::Node &n, const QVariantList &) { (n.path() == "/a" ? heardA : heardB) += 1; });
+        CHECK(r.apply({"/a", "f", {1.0}}) == 1 && b == 1.0 && heardA == 1 && heardB == 1);
+    }
     CHECK(tree.remove("/layer/2") && !tree.find("/layer/2/opacity"));
     return failures ? 1 : 0;
 }
