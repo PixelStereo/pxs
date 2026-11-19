@@ -13,7 +13,8 @@ def release(tag, names, published="2026-01-01T00:00:00Z", **extra):
 
 
 NEW = ["App-macos-arm64-v1.2.0.zip", "App-macos-x64-v1.2.0.zip", "App-windows-x64-v1.2.0-Setup.exe",
-       "App-windows-x64-v1.2.0.zip", "App-linux-x64-v1.2.0.AppImage", "App-linux-x64-v1.2.0.tar.gz"]
+       "App-windows-x64-v1.2.0.zip", "App-linux-x64-v1.2.0.AppImage", "App-linux-x64-v1.2.0.tar.gz",
+       "App-linux-arm64-v1.2.0.AppImage", "App-linux-arm64-v1.2.0.tar.gz"]
 
 
 class ReleaseDownloads(unittest.TestCase):
@@ -23,6 +24,9 @@ class ReleaseDownloads(unittest.TestCase):
         self.assertTrue(urls["mac-intel"].endswith("App-macos-x64-v1.2.0.zip"))
         self.assertTrue(urls["win"].endswith("-Setup.exe"))
         self.assertTrue(urls["linux"].endswith(".AppImage"))
+        self.assertIn("linux-x64", urls["linux"])
+        _, pi = rd.select([release("v1.2.0", NEW)], "App", "o/App", ["rpi"])
+        self.assertTrue(pi["rpi"].endswith("App-linux-arm64-v1.2.0.AppImage"))
 
     def test_incomplete_release_is_skipped(self):
         old = release("v1.1.0", [n.replace("1.2.0", "1.1.0") for n in NEW], "2026-01-01T00:00:00Z")

@@ -45,7 +45,7 @@ accepts the older names of releases published before the rule, until a newer rel
   - The payload goes in `<install dir>\app`, emptied before each install: the executable name carries the version, so an
     upgrade must not leave the previous one beside the new one.
   - The CI installs the result silently in a clean folder and starts what it installed.
-- **Linux**: an AppImage and a `tar.gz` where the application has a Linux version.
+- **Linux**: an AppImage and a `tar.gz` where the application has a Linux version; `linux-x64`, and `linux-arm64` for the Raspberry Pi 4 and 5 (64-bit Raspberry Pi OS), which has its own badge (`rpi`).
 
 ## The README follows the releases
 
@@ -63,7 +63,7 @@ permissions: { contents: write }
 jobs:
   update:
     uses: PixelStereo/pxs/.github/workflows/release-downloads.yml@v0.12.1
-    with: { app: MpOsc, platforms: "mac,win", pxs-ref: v0.12.1 }   # platforms: mac (Apple Silicon, and Intel when the release has it), mac-arm, mac-intel, win, linux
+    with: { app: MpOsc, platforms: "mac,win", pxs-ref: v0.12.1 }   # platforms: mac (Apple Silicon, and Intel when the release has it), mac-arm, mac-intel, win, linux, rpi
 ```
 
 The script is `scripts/release_downloads.py`; the commit says which release it follows.
