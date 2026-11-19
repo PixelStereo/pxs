@@ -466,6 +466,7 @@ inline constexpr char kScriptC[] = R"JS(
   window.addEventListener('orientationchange', () => setTimeout(() => { if (items.length) placeAll(); }, 250));
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E') && $('#edit').style.display !== 'none' && !$('#edit').hidden) { e.preventDefault(); $('#edit').click(); } }); // Cmd/Ctrl+E
   // Something dragged onto the page from outside (an address from a tree beside it): the application is told where
+  window.pxsPageId = () => pageId; // the page shown now (an application's front page puts what it adds there)
   const dropType = 'application/x-pxs-address';
   const droppable = e => e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], dropType) >= 0;
   document.addEventListener('dragover', e => { if (droppable(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
