@@ -30,8 +30,11 @@ PLATFORMS = {
                 oses=["windows", "win"], archs=["x64", "x86_64", "amd64", None, "arm64"],
                 suffixes=["-Setup.exe", "-setup.exe", ".exe", ".zip"]),
     "linux": dict(label="Linux", sub="AppImage", logo="linux", colour="b8821c", logo_colour="white",
-                  oses=["linux"], archs=["x64", "x86_64", "amd64", None, "arm64"],
+                  oses=["linux"], archs=["x64", "x86_64", "amd64", None],
                   suffixes=[".AppImage", ".tar.gz", ".deb"]),
+    # The Raspberry Pi 4 and 5 (64-bit Raspberry Pi OS): the Linux arm64 file
+    "rpi": dict(label="Raspberry Pi", sub="AppImage", logo="raspberrypi", colour="a22846", logo_colour="white",
+                oses=["linux"], archs=["arm64"], suffixes=[".AppImage", ".tar.gz", ".deb"]),
     "android": dict(label="Android", sub="APK", logo="android", colour="2f9e6a", logo_colour="white",
                     oses=["android"], archs=["arm64", None], suffixes=[".apk"]),
     "ios": dict(label="iOS", sub="IPA", logo="apple", colour="515b69", logo_colour="white",
@@ -118,7 +121,7 @@ def esc(text):
 def badge(platform, url):
     spec = PLATFORMS[platform]
     sub = spec["sub"]
-    if platform in ("linux", "win"):
+    if platform in ("linux", "rpi", "win"):
         kind = next((v for k, v in SUB_BY_SUFFIX.items() if url.lower().endswith(k) and v), None)
         sub = kind or sub
     return (f"[![{spec['label']} {spec['sub']}](https://img.shields.io/badge/{esc(spec['label'])}-{esc(sub)}-{spec['colour']}"

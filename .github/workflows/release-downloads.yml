@@ -19,7 +19,7 @@ on:
         required: true
         type: string
       platforms:
-        description: "Comma list: mac, win, linux, android, ios"
+        description: "Comma list: mac, win, linux, rpi, android, ios"
         default: mac,win
         type: string
       docs:
