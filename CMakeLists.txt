@@ -135,9 +135,3 @@ if(PXS_BUILD_TESTS)
     add_test(NAME build_id COMMAND ${CMAKE_COMMAND} -DPXS_ROOT=${CMAKE_CURRENT_SOURCE_DIR}
              -P ${CMAKE_CURRENT_SOURCE_DIR}/test/build_id_test.cmake)
 endif()
-
-# Applications built on pxs (the OSCQuery explorer)
-option(PXS_BUILD_APPS "Build the applications in apps/" OFF)
-if(PXS_BUILD_APPS)
-    add_subdirectory(apps/explorer)
-endif()
