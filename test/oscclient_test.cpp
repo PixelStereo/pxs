@@ -50,6 +50,12 @@ int main(int argc, char **argv)
     RemoteTree remote;
     CHECK(!remote.load(QJsonObject{{"nope", 1}}));
     CHECK(remote.load(tree.json()));
+    { // a device that says how a parameter is reset (NYXMAP_RESET)
+        pxs::oscquery::RemoteTree withReset;
+        const QJsonObject doc{{"FULL_PATH", "/"}, {"CONTENTS", QJsonObject{{"a", QJsonObject{{"FULL_PATH", "/a"}, {"TYPE", "f"}, {"ACCESS", 3}, {"NYXMAP_RESET", "/a/reset"},
+                                       {"CONTENTS", QJsonObject{{"reset", QJsonObject{{"FULL_PATH", "/a/reset"}, {"TYPE", "N"}, {"ACCESS", 2}}}}}}}}}};
+        CHECK(withReset.load(doc) && withReset.find("/a") && withReset.find("/a")->resetPath == "/a/reset" && withReset.find("/a/reset"));
+    }
     const RemoteNode *level_ = remote.find("/mix/level");
     CHECK(level_ && level_->type == "f" && level_->access == 3 && level_->value.at(0).toDouble() == 0.25);
     ParamInfo info;

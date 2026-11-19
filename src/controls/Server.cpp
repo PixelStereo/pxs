@@ -1,5 +1,6 @@
 #include "pxs/Server.h"
 #include "pxs/Physics.h"
+#include "pxs/ControlList.h"
 #include "pxs/ControlsPage.h"
 #include "WebSocketFrame.h"
 
@@ -366,6 +367,19 @@ void Server::onFrame(Client &c, int opcode, const QByteArray &payload)
             found->applyProps(o.value("props").toObject());
             checkpoint(QStringLiteral("edit%1").arg(target));
             if (m_backend->update(target, *found)) emit layoutEdited();
+            return;
+        }
+        if (type == QLatin1String("physicsWidget")) {
+            const std::optional<Control> target = m_backend->control(o.value("id").toString().toULongLong());
+            const std::optional<Control> made = target ? forPhysics(*target, o.value("key").toString()) : std::nullopt;
+            if (made) {
+                checkpoint();
+                if (m_backend->add(*made)) emit layoutEdited();
+            }
+            return;
+        }
+        if (type == QLatin1String("reset")) {
+            if (m_backend->reset(o.value("id").toString().toULongLong())) emit controlMoved();
             return;
         }
         if (type == QLatin1String("undo") || type == QLatin1String("redo")) {

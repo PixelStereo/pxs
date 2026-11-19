@@ -107,6 +107,11 @@ struct Control {
     quint64 boundScope = 0;
     QString boundParam;
     QString boundParam2; // a Pad that is a view of two parameters: the second one (its Y); the pad is 0..1 on both axes, each mapped to its parameter's own range
+    // A Slider that is a view of a physics setting of another control (friction, attraction, tension, wall, rate; a ball of a Points control:
+    // "2.friction"): it has no value of its own, it shows the setting and sets it
+    quint64 physTarget = 0;
+    QString physKey;
+    QStringList resets;  // derived, not kept: the addresses that put the defaults of what it is a view of back (the application tells); the tile shows a reset button
     QString boundLabel;  // where it comes from, for the page to show on the tile ("Device:/layer.1/opacity")
     int columns = 2;   // Group: how many columns it lays its controls out in (1..4)
     double min = 0, max = 1, step = 0.01; // Slider, Pad (both axes)
@@ -230,12 +235,14 @@ struct Control {
         QJsonObject o{{"id", QString::number(id)}, {"name", name}, {"key", key}, {"kind", kindKey(kind)}};
         if (group) o["group"] = QString::number(group);
         if (span != 1) o["span"] = span;
+        if (!boundLabel.isEmpty() && physTarget) o["boundLabel"] = boundLabel;
         if (bound()) {
             QJsonObject b{{"scope", QString::number(boundScope)}, {"param", boundParam}};
             if (!boundParam2.isEmpty()) b["param2"] = boundParam2;
             if (!boundLabel.isEmpty()) b["label"] = boundLabel;
             o["bind"] = b;
         }
+        if (physTarget) o["physicsOf"] = QJsonObject{{"id", QString::number(physTarget)}, {"key", physKey}};
         if (!widget.isEmpty()) o["widget"] = widget;
         if (!accent.isEmpty()) o["accent"] = accent;
         if (curve != 1) o["curve"] = curve;
@@ -363,7 +370,8 @@ struct Control {
         QJsonObject o{{"id", QString::number(id)}, {"name", name}, {"key", key}, {"kind", kindKey(kind)}};
         if (group) o["group"] = QString::number(group);
         o["span"] = span;
-        if (bound() && !boundLabel.isEmpty()) o["dest"] = boundLabel;
+        if ((bound() || physTarget) && !boundLabel.isEmpty()) o["dest"] = boundLabel;
+        if (!resets.isEmpty()) o["reset"] = true;
         if (!widget.isEmpty()) o["widget"] = widget;
         if (!accent.isEmpty()) o["accent"] = accent;
         if (curve != 1) o["curve"] = curve;
@@ -450,6 +458,11 @@ struct Control {
             c.boundParam = b.value("param").toString();
             c.boundParam2 = b.value("param2").toString();
             c.boundLabel = b.value("label").toString().left(160);
+        }
+        if (const QJsonObject po = o.value("physicsOf").toObject(); !po.isEmpty()) {
+            c.physTarget = po.value("id").toString().toULongLong();
+            c.physKey = po.value("key").toString().left(24);
+            c.boundLabel = o.value("boundLabel").toString();
         }
         c.widget = cleanWidget(o.value("widget").toString());
         c.accent = cleanAccent(o.value("accent").toString());

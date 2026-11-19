@@ -67,6 +67,11 @@ bool setAdsr(std::vector<Control> &list, quint64 id, const std::array<double, 4>
 bool setColor(Control &c, double r, double g, double b, const Feed &feed); // an own color
 
 // Views of a parameter
+// A Slider on a physics setting of another control (key: "friction", "attraction", "tension", "wall", "rate"; a ball of a Points control: "2.friction"):
+// not added. Empty: the control has no such setting
+std::optional<Control> forPhysics(const Control &target, const QString &key);
+void fillPhysics(std::vector<Control> &list);                 // the value of each control that is a view of a physics setting
+bool setPhysics(std::vector<Control> &list, quint64 id, double value); // false: not one, or its target is gone
 std::optional<Control> forParameter(const ParameterSource &source, quint64 scope, const QString &path, quint64 group); // not added
 // A pad that is a view of two numeric parameters (X then Y). It is 0..1 on both axes: each is mapped to its parameter's own range
 std::optional<Control> forParameters(const ParameterSource &source, quint64 scope, const QString &pathX, const QString &pathY, quint64 group);

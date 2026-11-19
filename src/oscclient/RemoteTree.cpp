@@ -12,6 +12,7 @@ static bool parse(const QJsonObject &o, const QString &name, RemoteNode *out, in
     out->path = o.value("FULL_PATH").toString();
     out->type = o.value("TYPE").toString();
     out->description = o.value("DESCRIPTION").toString();
+    out->resetPath = o.value("NYXMAP_RESET").toString();
     out->kind = o.value("PXS_KIND").toString();
     out->access = std::clamp(o.value("ACCESS").toInt(0), 0, 3);
     out->range = o.value("RANGE").toArray();

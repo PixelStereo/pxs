@@ -17,6 +17,7 @@ struct RemoteNode {
     QString type;        // OSC type tags, one per argument; empty for a container
     QString description;
     QString kind;        // PXS_KIND: "message", "signal", or empty
+    QString resetPath;   // NYXMAP_RESET: the address that puts the parameter's default back (a trigger of the same device); empty: none
     int access = 0;      // 0 none (a container), 1 read, 2 write, 3 both
     QJsonArray range;    // one entry per argument: {"MIN","MAX"} or {"VALS"}
     QJsonArray value;    // the last one known, one entry per argument (empty: none known)

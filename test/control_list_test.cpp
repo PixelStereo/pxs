@@ -177,6 +177,24 @@ int main()
     rview.boundParam = "ro";
     check(!setBound(rview, fake, 1), "a read-only parameter is not set");
 
+    { // a slider on a physics setting of another control
+        Control target;
+        target.id = 5, target.name = "Ball pad", target.kind = Control::Kind::Points, target.count = 2;
+        target.balls = {Ball{}, Ball{}};
+        target.balls[1].physics.friction = 7;
+        target.points = {{0.5, 0.5}, {0.5, 0.5}};
+        check(!forPhysics(target, "nonsense") && !forPhysics(target, "3.friction"), "a setting that is not there has no widget");
+        const auto view = forPhysics(target, "2.friction");
+        check(view && view->physTarget == 5 && view->max == 30 && view->value == 7 && view->name.contains("ball 2"), "a slider for a ball's friction");
+        std::vector<Control> list{target, *view};
+        list[1].id = 6;
+        fillPhysics(list);
+        check(list[1].value == 7, "its value is the setting");
+        check(setPhysics(list, 6, 12.5) && list[0].balls[1].physics.friction == 12.5 && list[0].balls[0].physics.friction == 5, "setting it sets that ball's physics only");
+        check(setPhysics(list, 6, 1e9) && list[0].balls[1].physics.friction == 30, "within the setting's range");
+        const Control again = Control::fromJson(list[1].toJson());
+        check(again.physTarget == 5 && again.physKey == "2.friction", "it goes through JSON");
+    }
     if (!failures) std::printf("control_list: ok\n");
     return failures ? 1 : 0;
 }
