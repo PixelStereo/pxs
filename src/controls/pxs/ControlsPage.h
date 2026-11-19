@@ -294,7 +294,7 @@ inline constexpr char kScriptB[] = R"JS(
       const at = p => { const r = pad.getBoundingClientRect(); return [c.min + clamp((p.x - r.left) / r.width, 0, 1) * span, c.min + clamp(1 - (p.y - r.top) / r.height, 0, 1) * span]; };
       const move = p => { const v = at(p); values[c.id] = v; draw(v); throttled(c.id, () => send({ t: 'point', id: c.id, xy: v })); };
       let down = false;
-      press(pad, { down: p => { down = true; active.add(c.id); move(p); }, move, up: p => { down = false; active.delete(c.id); send({ t: 'point', id: c.id, xy: at(p) }); } });
+      press(pad, { down: p => { down = true; active.add(c.id); move(p); }, move, up: p => { down = false; active.delete(c.id); send({ t: 'point', id: c.id, xy: at(p) }); send({ t: 'rel', id: c.id }); } });
       return { el: pad, set: v => { if (!down) draw(v); } };
     }
     if (c.kind === 'adsr') return adsr(c, io);
@@ -414,7 +414,7 @@ inline constexpr char kScriptC[] = R"JS(
     if (c.kind !== 'group' && c.kind !== 'toggle') {
       const bd = el('div', 'bd');
       const kindMsg = (v) => c.kind === 'adsr' ? { t: 'adsr', id: c.id, v } : c.kind === 'multi' ? { t: 'multi', id: c.id, v } : c.kind === 'points' ? { t: 'points', id: c.id, v } : { t: 'set', id: c.id, v };
-      const io = { begin: () => active.add(c.id), input: v => { values[c.id] = v; if (val) val.textContent = fmt(c, v); throttled(c.id, () => send(kindMsg(v))); }, end: () => { active.delete(c.id); send(kindMsg(values[c.id])); } };
+      const io = { begin: () => active.add(c.id), input: v => { values[c.id] = v; if (val) val.textContent = fmt(c, v); throttled(c.id, () => send(kindMsg(v))); }, end: () => { active.delete(c.id); send(kindMsg(values[c.id])); send({ t: 'rel', id: c.id }); } };
       t.api = widget(c, io); t.val = val; bd.appendChild(t.api.el); face.appendChild(bd);
     } else if (c.kind === 'toggle') {
       const bd = el('div', 'bd'), io = { begin() {}, input: v => send({ t: 'set', id: c.id, v }), end() {} };
@@ -464,6 +464,11 @@ inline constexpr char kScriptC[] = R"JS(
   }
   window.addEventListener('resize', () => { if (items.length) placeAll(); });
   window.addEventListener('orientationchange', () => setTimeout(() => { if (items.length) placeAll(); }, 250));
+  document.addEventListener('keydown', e => { // Cmd/Ctrl+Z undoes the last change of the page, with Shift (or Ctrl+Y) redoes it
+    const k = (e.key || '').toLowerCase(), t = e.target && e.target.tagName;
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+    if (k === 'z' || k === 'y') { e.preventDefault(); send({ t: (k === 'y' || e.shiftKey) ? 'redo' : 'undo' }); }
+  });
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E') && $('#edit').style.display !== 'none' && !$('#edit').hidden) { e.preventDefault(); $('#edit').click(); } }); // Cmd/Ctrl+E
   // Something dragged onto the page from outside (an address from a tree beside it): the application is told where
   window.pxsPageId = () => pageId; // the page shown now (an application's front page puts what it adds there)
@@ -523,6 +528,16 @@ inline constexpr char kScriptD[] = R"JS(
       r.oninput = () => { const k = Math.pow(4, Number(r.value) / 100); say(k); push({ curve: Number(k.toFixed(3)) }); };
       say(c.curve || 1); sh.appendChild(r); sh.appendChild(hint);
       }
+    }
+    if (c.physics) {
+      const ph = Object.assign({}, c.physics), save = () => push({ physics: Object.assign({}, ph) });
+      const on = el('label', 'chk'), cb = el('input'); cb.type = 'checkbox'; cb.checked = !!ph.on; cb.onchange = () => { ph.on = cb.checked; save(); box.hidden = !ph.on; };
+      on.appendChild(cb); on.appendChild(document.createTextNode(' Physics (it goes on after the hand lets go)')); sh.appendChild(on);
+      const box = el('div'); box.hidden = !ph.on;
+      const knob = (label, key, max, hint) => { box.appendChild(el('label', '', label)); const r = el('input'); r.type = 'range'; r.min = 0; r.max = 100; r.value = Math.round(Math.sqrt(ph[key] / max) * 100);
+        const h = el('div', 'hint'), say = () => { h.textContent = hint + ' ' + ph[key].toFixed(key === 'bounce' ? 2 : 1); }; r.oninput = () => { const t = Number(r.value) / 100; ph[key] = Number((key === 'bounce' ? t * t : t * t * max).toFixed(3)); say(); save(); }; say(); box.appendChild(r); box.appendChild(h); };
+      knob('Friction', 'friction', 30, 'slows it down:'); knob('Attraction', 'attract', 200, 'pulls it back to its default:'); knob('Bounce', 'bounce', 1, 'kept of its speed at the ends:');
+      sh.appendChild(box);
     }
     const del = el('button', 'del', 'Delete this control'); del.onclick = () => { if (confirm('Delete "' + c.name + '"? Its OSC address goes with it.')) { send({ t: 'remove', id: c.id }); closeSheet(); } };
     sh.appendChild(del);

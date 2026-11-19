@@ -15,6 +15,8 @@
 //   server -> {"t":"values","v":{"<id>":<number>|[numbers]}}              what changed
 //   client -> {"t":"set","id":"<id>","v":<number>}   {"t":"color","id":..,"rgb":[r,g,b]}   {"t":"point","id":..,"xy":[x,y]}
 //             {"t":"points","id":..,"v":[x1,y1,x2,y2…]}   {"t":"multi","id":..,"v":[…]}   {"t":"adsr","id":..,"v":[a,d,s,r]}
+//   client -> {"t":"undo"} / {"t":"redo"}   the page's last change, back and forth (Backend::restore)
+//   client -> {"t":"rel","id":"..."}   the hand let go of a control: its physics (Control::physics) takes over
 //   client -> {"t":"drop","data":"<text>","page":"<id>","x":..,"y":..}   something dragged onto the page from outside (the application's own message: `message()`)
 //   client -> {"t":"layout","items":{"<id>":{"x","y","w","h"}}}   {"t":"edit","id":..,"props":{…}} (Control::applyProps)   {"t":"remove","id":..}
 // An application adds its own pages and messages through the hooks (servePage, message, tick).
@@ -26,6 +28,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <array>
 #include <optional>
@@ -55,6 +58,8 @@ public:
     virtual bool setLayouts(const QHash<quint64, std::array<int, 4>> &places) = 0; // id -> x, y, w, h
     virtual bool update(quint64 id, const Control &changed) = 0;                    // a control's settings changed on the page
     virtual bool remove(quint64 id) = 0;
+    // The whole list as it was (undo, redo): its controls, their places and settings. False: this application does not undo the page
+    virtual bool restore(const std::vector<Control> &controls) { Q_UNUSED(controls) return false; }
 };
 
 class Server : public QObject
@@ -102,6 +107,9 @@ protected:
     void setBackend(Backend *backend) { m_backend = backend; } // for an application that makes its backend after the server
     void sendText(QTcpSocket *client, const QByteArray &json) const;
     QList<QTcpSocket *> websockets() const;
+    void checkpoint(const QString &what = QString()); // before a change of the page: what undo goes back to (the same `what` in a row: one step)
+    bool undo();
+    bool redo();
     void leaveControls(QTcpSocket *client); // this client has pages of its own: the controls are not pushed to it
     static QByteArray response(int status, const QByteArray &body, const QByteArray &type, const QByteArray &extra = {}, bool frameable = false);
 
@@ -123,6 +131,9 @@ private:
     void onData(QTcpSocket *s);
     void onFrame(Client &c, int opcode, const QByteArray &payload);
     void push();
+    void touched(quint64 id);  // a client moved this control: its speed, for when it lets go
+    void released(quint64 id); // it let go: what is left of its speed, and its physics
+    void stepPhysics();
     void send(QTcpSocket *s, const QByteArray &frame) const;
     QByteArray controlsMessage(const std::vector<Control> &controls) const;
     bool authorized(const QByteArray &presented) const;
@@ -130,7 +141,17 @@ private:
     Backend *m_backend;
     QTcpServer *m_server = nullptr;
     QHash<QTcpSocket *, Client> m_clients;
-    QTimer m_timer;
+    QTimer m_timer, m_physics;
+    QElapsedTimer m_clock;
+    struct Body {
+        std::vector<double> last, v; // its numbers at the last gesture message, its speed (0..1 of the range per second)
+        qint64 movedAt = 0;
+        bool held = false, moving = false;
+    };
+    QHash<quint64, Body> m_bodies;
+    std::vector<std::vector<Control>> m_undo, m_redo;
+    QString m_lastWhat;
+    qint64 m_lastAt = 0;
     QString m_pin, m_status, m_name = QStringLiteral("Remote"), m_pageTitle = QStringLiteral("Controls");
     QByteArray m_csp;
     bool m_frameable = false;
