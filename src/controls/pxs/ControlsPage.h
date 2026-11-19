@@ -447,7 +447,7 @@ inline constexpr char kScriptC[] = R"JS(
     list.forEach(p => { const b = el('button', p.id === pageId ? 'on' : '', p.name); b.onclick = () => { pageId = p.id; render(); }; tabs.appendChild(b); });
     grid.textContent = ''; Object.keys(tiles).forEach(k => delete tiles[k]);
     grid.classList.toggle('edit', editing);
-    if (pageId < 0) { grid.appendChild(el('div', '', 'No control yet. Right-click a parameter in NyxMap › Add to Controls Page, or make some in NyxMap › Controls.')).id = 'empty'; $('#edit').hidden = true; return; }
+    if (pageId < 0) { grid.appendChild(el('div', '', 'No control yet. Add a parameter from the application: right-click it › Add to Controls Page, or drag its address here.')).id = 'empty'; $('#edit').hidden = true; return; }
     items = layoutOf(pageItems(pageId));
     items.forEach(it => grid.appendChild(tile(it).el));
     placeAll(); update();
