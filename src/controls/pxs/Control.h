@@ -129,6 +129,7 @@ struct Control {
     quint64 physTarget = 0;
     QString physKey;
     QStringList resets;  // derived, not kept: the addresses that put the defaults of what it is a view of back (the application tells); the tile shows a reset button
+    bool signal = false; // what it shows is a signal the device emits (no value of its own): shown, never set
     QString boundLabel;  // where it comes from, for the page to show on the tile ("Device:/layer.1/opacity")
     int columns = 2;   // Group: how many columns it lays its controls out in (1..4)
     double min = 0, max = 1, step = 0.01; // Slider, Pad (both axes)
@@ -254,6 +255,7 @@ struct Control {
         if (group) o["group"] = QString::number(group);
         if (span != 1) o["span"] = span;
         if (!boundLabel.isEmpty() && physTarget) o["boundLabel"] = boundLabel;
+        if (signal) o["signal"] = true;
         if (bound()) {
             QJsonObject b{{"scope", QString::number(boundScope)}, {"param", boundParam}};
             if (!boundParam2.isEmpty()) b["param2"] = boundParam2;
@@ -413,6 +415,7 @@ struct Control {
         if (group) o["group"] = QString::number(group);
         o["span"] = span;
         if ((bound() || physTarget) && !boundLabel.isEmpty()) o["dest"] = boundLabel;
+        if (signal) o["signal"] = true;
         if (!targets.empty()) o["dest"] = QString("%1 target%2").arg(targets.size()).arg(targets.size() == 1 ? "" : "s");
         if (!resets.isEmpty()) o["reset"] = true;
         if (!targets.empty()) {
@@ -502,6 +505,7 @@ struct Control {
         c.kind = kindFromKey(o.value("kind").toString());
         c.group = o.value("group").toString().toULongLong();
         c.span = std::clamp(o.value("span").toInt(1), 1, 4);
+        c.signal = o.value("signal").toBool();
         if (const QJsonObject b = o.value("bind").toObject(); !b.value("param").toString().isEmpty() || (c.kind == Kind::Points && b.contains("scope"))) {
             c.boundScope = b.value("scope").toString().toULongLong();
             c.boundParam = b.value("param").toString();

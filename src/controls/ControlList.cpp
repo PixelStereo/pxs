@@ -394,6 +394,7 @@ std::optional<Control> forParameter(const ParameterSource &source, quint64 scope
     if (c.name.isEmpty()) c.name = info.name();
     c.boundScope = scope;
     c.boundParam = target;
+    c.signal = info.signal;
     if (!writable) c.widget = c.kind == Kind::Slider ? QStringLiteral("meter") : c.kind == Kind::Toggle ? QStringLiteral("led") : QStringLiteral("readout");
     return c;
 }
