@@ -38,6 +38,7 @@ header h1 { flex:1; margin:0 10px 0 0; font-size:16px; font-weight:600; white-sp
 .sec .hd { font-size:13px; }
 .hd { display:flex; justify-content:space-between; align-items:baseline; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); white-space:nowrap; }
 .tile .face .hd span:first-child { font-size:15px; text-transform:none; letter-spacing:0; color:var(--text); font-weight:600; }
+.face.sig { outline:1px dashed var(--acc); outline-offset:-4px; }
 .sigtag { font-size:8px; letter-spacing:.08em; color:var(--acc); border:1px solid var(--acc); border-radius:4px; padding:0 4px; margin-left:6px; opacity:.85; font-weight:600; }
 .dest { font-size:9px; line-height:1.25; color:var(--dim); opacity:.8; overflow:hidden; word-break:break-all; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-family:ui-monospace,Menlo,monospace; }
 .hd span { overflow:hidden; text-overflow:ellipsis; }
@@ -494,6 +495,7 @@ inline constexpr char kScriptC[] = R"JS(
   function tile(it) {
     const c = it.c, t = { it, el: el('div', 'tile' + (c.kind === 'group' ? ' sec' : '')), api: null };
     const face = el('div', 'face'), hd = el('div', 'hd'), name = el('span', '', leaf(c.name)), val = el('b');
+    if (c.signal) face.classList.add('sig');
     if (c.dest) name.title = c.dest; // only the node's name shows; the whole address is on hover
     face.style.setProperty('--a', c.accent || '');
     if (!c.accent) face.style.removeProperty('--a');
