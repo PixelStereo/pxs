@@ -102,7 +102,8 @@ ChannelGrid::ChannelGrid(QWidget *parent) : QWidget(parent)
     m_editor->setObjectName("channelEditor");
     m_editor->setFixedWidth(330);
     m_editor->setStyleSheet("QFrame#channelEditor { background:palette(window); border:1px solid palette(highlight); border-radius:8px; }"
-                            "QFrame#channelEditor QLabel { background:transparent; border:0; }");
+                            "QFrame#channelEditor QLabel { background:transparent; border:0; }"
+                            "QFrame#channelEditor QSpinBox { padding:4px 6px; min-height:15px; }");
     m_editor->hide();
     auto editorLayout = new QVBoxLayout(m_editor);
     editorLayout->setContentsMargins(12, 10, 12, 12);
