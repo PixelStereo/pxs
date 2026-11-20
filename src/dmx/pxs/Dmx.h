@@ -14,11 +14,14 @@ struct Frame {
     int priority = 100;     // sACN: 0..200
     quint8 sequence = 0;
     QByteArray cid, values; // sACN: the sender's 16-byte id; the levels (512 after a decode)
+    int length = channelCount; // channels in the packet, 1..512 (Art-Net: even, at least 2): fewer is a partial frame
+    quint8 startCode = 0;   // sACN: 0 the levels, 0xDD a priority for each channel (encode only; decode takes levels)
     QString name;           // sACN: the source's name
     bool terminated = false; // sACN: the source stops sending this universe
 };
 
-// The packet of a frame; empty when the universe or the priority is out of range. Fewer than 512 values are padded with zeros.
+// The packet of a frame; empty when the universe or the priority is out of range. `length` channels are sent (the values are
+// padded with zeros, or cut); a decoded frame says in `length` how many the packet carried.
 QByteArray encode(const Frame &frame);
 // What a packet carries, checked in full (lengths, flags, vectors); false for anything that is not DMX of that protocol.
 // `sacn` says which protocol to expect: the port it arrived on tells it.

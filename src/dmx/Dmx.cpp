@@ -21,29 +21,33 @@ QByteArray encode(const Frame &f) {
   if (f.universe < (f.sacn ? 1 : 0) || f.universe > (f.sacn ? 63999 : 32767) ||
       (f.sacn && (f.priority < 0 || f.priority > 200)))
     return {};
-  QByteArray values = f.values.left(512);
-  values.resize(512, 0);
+  int n = qBound(1, f.length, channelCount);
+  if (!f.sacn)
+    n = qMax(2, n + (n & 1)); // Art-Net carries an even number of channels
+  QByteArray values = f.values.left(n);
+  values.resize(n, 0);
   if (!f.sacn) {
-    QByteArray d(530, 0);
+    QByteArray d(18 + n, 0);
     d.replace(0, 8, QByteArray("Art-Net\0", 8));
     d[9] = 0x50;
     put(d, 10, 14);
     d[12] = char(f.sequence);
     d[14] = char(f.universe);
     d[15] = char(f.universe >> 8);
-    put(d, 16, 512);
-    d.replace(18, 512, values);
+    put(d, 16, n);
+    d.replace(18, n, values);
     return d;
   }
-  QByteArray d(638, 0);
+  const int total = 126 + n; // the three PDUs' lengths follow from it
+  QByteArray d(total, 0);
   put(d, 0, 16);
   d.replace(4, 12, QByteArray("ASC-E1.17\0\0\0", 12));
-  put(d, 16, 0x7000 | 622);
+  put(d, 16, 0x7000 | (total - 16));
   d[21] = 4;
   QByteArray cid = f.cid.left(16);
   cid.resize(16, 0);
   d.replace(22, 16, cid);
-  put(d, 38, 0x7000 | 600);
+  put(d, 38, 0x7000 | (total - 38));
   d[43] = 2;
   auto name = f.name.toUtf8().left(63);
   d.replace(44, name.size(), name);
@@ -51,12 +55,13 @@ QByteArray encode(const Frame &f) {
   d[111] = char(f.sequence);
   d[112] = f.terminated ? 0x40 : 0;
   put(d, 113, f.universe);
-  put(d, 115, 0x7000 | 523);
+  put(d, 115, 0x7000 | (total - 115));
   d[117] = 2;
   d[118] = char(0xa1);
   put(d, 121, 1);
-  put(d, 123, 513);
-  d.replace(126, 512, values);
+  put(d, 123, n + 1);
+  d[125] = char(f.startCode);
+  d.replace(126, n, values);
   return d;
 }
 bool decode(const QByteArray &d, bool sacn, Frame &f) {
@@ -72,6 +77,7 @@ bool decode(const QByteArray &d, bool sacn, Frame &f) {
     f.universe = u8(d, 14) | (u8(d, 15) << 8);
     f.sequence = u8(d, 12);
     f.values = d.mid(18, n);
+    f.length = n;
   } else {
     if (d.size() < 126 || be(d, 0) != 16 || be(d, 2) != 0 ||
         std::memcmp(d.constData() + 4, "ASC-E1.17\0\0\0", 12) != 0 ||
@@ -92,6 +98,7 @@ bool decode(const QByteArray &d, bool sacn, Frame &f) {
     f.cid = d.mid(22, 16);
     f.name = QString::fromUtf8(d.mid(44, 64).split('\0').first());
     f.values = d.mid(126, n - 1);
+    f.length = n - 1;
   }
   f.values.resize(512, 0);
   return true;
