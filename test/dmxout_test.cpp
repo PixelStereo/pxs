@@ -59,10 +59,11 @@ int main(int argc, char **argv)
         o = art;
         o.firstUniverse = 32767;
         o.universeCount = 2;
-        CHECK(!o.validate().isEmpty()); // goes past Art-Net's last universe
+        CHECK(!o.validateMapping().isEmpty()); // goes past Art-Net's last universe
+        CHECK(o.validate().isEmpty());         // the map is not the transport's
         o = sacn;
         o.firstUniverse = 0;
-        CHECK(!o.validate().isEmpty());
+        CHECK(!o.validateMapping().isEmpty() && o.validate().isEmpty());
     }
 
     // JSON round trip, and what is missing takes the protocol's default

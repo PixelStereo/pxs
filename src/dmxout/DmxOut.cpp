@@ -31,17 +31,22 @@ QString Output::validate() const
     if (priority < 0 || priority > 200) return QStringLiteral("The sACN priority is 0 to 200");
     if (port < 0 || port > 65535) return QStringLiteral("The port is 0 to 65535");
     if (!interfaceAddress.isEmpty() && !ipv4(interfaceAddress)) return QStringLiteral("The network card is an IPv4 address");
+    if (delivery == Delivery::Unicast) {
+        if (destinations.isEmpty()) return QStringLiteral("Unicast needs at least one IPv4 address");
+        for (const QString &d : destinations)
+            if (!ipv4(d)) return QStringLiteral("Not an IPv4 address: %1").arg(d);
+    }
+    return {};
+}
+
+QString Output::validateMapping() const
+{
     const int low = protocol == Protocol::ArtNet ? 0 : 1;
     if (firstUniverse < low || firstUniverse > highestUniverse())
         return QStringLiteral("The first network universe is %1 to %2").arg(low).arg(highestUniverse());
     if (firstSourceUniverse < 0 || universeCount < 0) return QStringLiteral("The universe range is not valid");
     if (universeCount && firstUniverse + universeCount - 1 > highestUniverse())
         return QStringLiteral("The universes go past the protocol's last one (%1)").arg(highestUniverse());
-    if (delivery == Delivery::Unicast) {
-        if (destinations.isEmpty()) return QStringLiteral("Unicast needs at least one IPv4 address");
-        for (const QString &d : destinations)
-            if (!ipv4(d)) return QStringLiteral("Not an IPv4 address: %1").arg(d);
-    }
     return {};
 }
 

@@ -49,8 +49,11 @@ struct Output {
     int effectivePort() const { return port > 0 ? port : protocol == Protocol::ArtNet ? artNetPort : sacnPort; }
     int highestUniverse() const { return protocol == Protocol::ArtNet ? 32767 : 63999; }
     double maxRate() const { return protocol == Protocol::ArtNet ? 44 : 120; } // Art-Net's limit; sACN has none, LED pixels want more
-    // Why it cannot work, or empty
+    // Why it cannot send, or empty: the rate, priority, port, card and addresses. The Sender opens an output only if this is empty.
     QString validate() const;
+    // Why the universe map is not usable, or empty. An application that addresses network universes itself (`route` unused) has no
+    // map to check.
+    QString validateMapping() const;
     bool operator==(const Output &other) const;
     bool operator!=(const Output &other) const { return !(*this == other); }
     QJsonObject toJson() const;
