@@ -43,6 +43,7 @@ public:
     // the Transmitter's; the CID is set here. A terminated sACN frame ends the stream (sent three times by `end`).
     bool send(Frame frame, const QHostAddress &destination, QString *error);
     bool end(Frame frame, QString *error); // sACN: the stream of that universe stops
+    quint8 lastSequence() const { return m_sequence; } // the number of the last frame sent
     QHostAddress lastTarget() const { return m_lastTarget; }
     quint16 lastPort() const { return m_lastPort; }       // where the last frame went
     QHostAddress localAddress() const { return m_socket.localAddress(); }

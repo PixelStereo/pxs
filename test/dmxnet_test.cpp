@@ -166,7 +166,8 @@ int main(int argc, char **argv)
                 CHECK(m.merged(false, 3, MergeMode::HTP, true).isEmpty());
             }
             // The sequence is the Transmitter's, from 1
-            CHECK(t.send(f, QHostAddress::LocalHost, &error) && t.lastPort() == 46454);
+            CHECK(t.lastSequence() == 1);
+            CHECK(t.send(f, QHostAddress::LocalHost, &error) && t.lastPort() == 46454 && t.lastSequence() == 2);
             CHECK(!t.send(Frame{.universe = -4}, QHostAddress::LocalHost, &error) && !error.isEmpty());
             m.stop();
             t.stop();
