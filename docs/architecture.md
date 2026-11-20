@@ -1,110 +1,108 @@
-# Architecture commune : l'arbre, les feuilles, les mappings
+# Common architecture: the tree, the leaves, the mappings
 
-Ce document fixe ce que toutes les applications Pixel Stereo ont en commun pour exposer et piloter leurs réglages. Il
-sert de contrat : une application, une liste de paramètres, un menu ou un mapping se comportent de la même façon
-partout. Les points marqués **à valider** attendent une réponse.
+This document fixes what every Pixel Stereo application has in common to expose and drive its settings. It serves as a
+contract: an application, a parameter list, a menu or a mapping behaves the same way everywhere. Points marked **to be
+validated** are waiting for an answer.
 
-## Vocabulaire
+## Vocabulary
 
-| Mot | Sens | Dans `pxs::tree` |
+| Word | Meaning | In `pxs::tree` |
 |---|---|---|
-| **Nœud** | un élément de l'arbre, avec un nom et un chemin (`/layer/1/opacity`) | `Node` |
-| **Branche** | un nœud qui en contient d'autres, sans valeur ni action | `Kind::Container` |
-| **Feuille** | un nœud qui ne contient rien et qui fait quelque chose | `Kind::Parameter`, `Action`, `Signal` |
-| **Paramètre** | une feuille **avec un état** : on le lit, l'écrit, le sauvegarde ; il dit quand il change | `add(path, Parameter)`, ou rempli à la main |
-| **Action** | une feuille **sans état** : on la reçoit, elle déclenche quelque chose | `addAction` |
-| **Signal** (contrôleur) | une feuille **sans état** : l'application l'émet, personne ne l'écrit ; on ne mémorise pas sa valeur | `addSignal`, `fire` |
+| **Node** | an element of the tree, with a name and a path (`/layer/1/opacity`) | `Node` |
+| **Branch** | a node that contains other nodes, with no value or action | `Kind::Container` |
+| **Leaf** | a node that contains nothing and does something | `Kind::Parameter`, `Action`, `Signal` |
+| **Parameter** | a leaf **with a state**: it is read, written and saved; it says when it changes | `add(path, Parameter)`, or filled in by hand |
+| **Action** | a leaf **without a state**: it is received and triggers something | `addAction` |
+| **Signal** (controller) | a leaf **without a state**: the application emits it, nobody writes it; its value is not remembered | `addSignal`, `fire` |
 
-Une feuille n'a pas d'enfants : un nœud à qui on en donne devient une branche.
-Un contrôleur matériel (MIDI, capteur, OSC entrant) est un **signal**.
+A leaf has no children: a node that is given some becomes a branch.
+A hardware controller (MIDI, sensor, incoming OSC) is a **signal**.
 
-## Le contrat : ce que chaque sorte de nœud fait, partout pareil
+## The contract: what each kind of node does, the same everywhere
 
-| | Branche | Paramètre | Action | Signal |
+| | Branch | Parameter | Action | Signal |
 |---|---|---|---|---|
-| **OSC reçu** | sans effet | écrit la valeur (dans ses limites) | exécute l'action | refusé |
-| **OSC émis** | – | le retour (`changed`) vers qui a écrit et vers les destinations | – | le flux (`fire`) vers les destinations seulement |
-| **OSCQuery** | `CONTENTS` | `TYPE`, `ACCESS` 1 à 3, `RANGE`, `VALUE` | `ACCESS` 2, pas de `VALUE` | `ACCESS` 1, pas de `VALUE` |
-| **Sauvegardé** | non | oui, par adresse (`parametersToJson`) sauf `transient` | non | non |
-| **Réinitialiser** | – | oui, s'il a une valeur par défaut | – | – |
-| **Verrouiller** | – | oui : aucune écriture (OSC, mapping, interface) | oui | – |
-| **Source de mapping** | – | non (pour l'instant) | – | **oui** |
-| **Cible de mapping** | – | **oui** | **oui** (déclenchée) | – |
-| **Ligne dans le panneau** | un dossier qu'on plie | un champ selon le type : case, curseur, menu, texte | un bouton | un indicateur d'activité |
-| **Menu contextuel** | – | Réinitialiser · Copier l'adresse OSC · Verrouiller · Animer · Lier à un signal | Copier l'adresse OSC · Verrouiller | Copier l'adresse OSC |
+| **OSC received** | no effect | writes the value (within its limits) | runs the action | refused |
+| **OSC sent** | – | the feedback (`changed`) to whoever wrote and to the destinations | – | the stream (`fire`) to the destinations only |
+| **OSCQuery** | `CONTENTS` | `TYPE`, `ACCESS` 1 to 3, `RANGE`, `VALUE` | `ACCESS` 2, no `VALUE` | `ACCESS` 1, no `VALUE` |
+| **Saved** | no | yes, by address (`parametersToJson`) except `transient` | no | no |
+| **Reset** | – | yes, if it has a default value | – | – |
+| **Lock** | – | yes: no writes at all (OSC, mapping, interface) | yes | – |
+| **Mapping source** | – | no (for now) | – | **yes** |
+| **Mapping target** | – | **yes** | **yes** (triggered) | – |
+| **Row in the panel** | a folder that can be collapsed | a field according to the type: checkbox, slider, menu, text | a button | an activity indicator |
+| **Context menu** | – | Reset · Copy OSC address · Lock · Animate · Link to a signal | Copy OSC address · Lock | Copy OSC address |
 
-Le champ d'un paramètre vient de son type et de sa plage ; l'application ne le redessine pas.
-Les actions restent des boutons que **l'application place elle-même** ; il n'y a pas de menu d'actions automatique.
+A parameter's field comes from its type and its range; the application does not redraw it.
+Actions remain buttons that **the application places itself**; there is no automatic action menu.
 
-## Mapping : l'Interaction de NyxMap, pour toutes les applications
+## Mapping: NyxMap's Interaction, for every application
 
-Le mapping existe déjà dans NyxMap : c'est le panneau **Interaction** (son modèle est dans `Interactions.h`), avec le
-MIDI learn. On ne réinvente rien : on **extrait** ce modèle dans `pxs`, puis chaque application, NyxMap comprise, l'utilise
-depuis `pxs`.
+Mapping already exists in NyxMap: it is the **Interaction** panel (its model is in `Interactions.h`), with MIDI learn. We
+reinvent nothing: we **extract** this model into `pxs`, then every application, NyxMap included, uses it from `pxs`.
 
-Une **interaction** prend la valeur d'une **source** (clavier, MIDI, OSC, interne, audio ; un contrôleur est un signal),
-la passe dans une **chaîne de filtres** (Remap, Moyenne, Attack Release, Damper, Courbe, Math, Seuil, Toggle,
-Enveloppe…), applique le niveau maître, et l'envoie à la **cible**, qui la reçoit dans ses unités : un nombre, un
-interrupteur (à partir de 0,5), un choix (par son indice), une action (déclenchée au passage de 0,5).
-- **Reprise (pick-up) ou saut** quand la cible a été bougée par autre chose.
-- **Mode Action** : des conditions sur la valeur de la source, et ce qui se passe quand elles deviennent vraies ou
-  fausses.
-- Couleurs et points XY : chaque canal a sa propre chaîne.
-- Des **groupes** pour ranger la liste.
-- Les signaux ne sont jamais mémorisés ; seule l'interaction l'est.
+An **interaction** takes the value of a **source** (keyboard, MIDI, OSC, internal, audio; a controller is a signal),
+passes it through a **filter chain** (Remap, Average, Attack Release, Damper, Curve, Math, Threshold, Toggle,
+Envelope…), applies the master level, and sends it to the **target**, which receives it in its own units: a number, a
+switch (from 0.5), a choice (by its index), an action (triggered when crossing 0.5).
+- **Pick-up or jump** when the target has been moved by something else.
+- **Action mode**: conditions on the source value, and what happens when they become true or false.
+- Colors and XY points: each channel has its own chain.
+- **Groups** to organize the list.
+- Signals are never remembered; only the interaction is.
 
-**Décisions prises**
-- **Stockage** : `pxs` fournit le JSON (`Interaction::toJson` / `fromJson`) ; **l'application décide où il vit** (projet ou
-  réglages).
-- **Verrou** : il est **sauvegardé** avec ce que l'application sauvegarde. `pxs` fournit `lockedToJson` / `lockedFromJson`
-  (la liste des adresses verrouillées).
-- **Animer** : le drapeau `animatable` et la demande (le menu contextuel propose Animer ; l'application décide quoi en
-  faire : la timeline de NyxMap, rien ailleurs).
+**Decisions made**
+- **Storage**: `pxs` provides the JSON (`Interaction::toJson` / `fromJson`); **the application decides where it lives**
+  (project or settings).
+- **Lock**: it is **saved** along with what the application saves. `pxs` provides `lockedToJson` / `lockedFromJson`
+  (the list of locked addresses).
+- **Animate**: the `animatable` flag and the request (the context menu offers Animate; the application decides what to do
+  with it: NyxMap's timeline, nothing elsewhere).
 
-## Ce qui existe dans NyxMap et passe dans `pxs`
+## What exists in NyxMap and moves into `pxs`
 
-Tes quatre idées sont en fait des choses que NyxMap a déjà. Le travail est une **extraction**, par étapes :
+Your four ideas are in fact things NyxMap already has. The work is an **extraction**, in steps:
 
-| Étape | Contenu | État |
+| Step | Content | State |
 |---|---|---|
-| 1 | le modèle et le moteur de filtres des interactions (`Interactions.h`, `Anim.h`, graphe) : `pxs::interaction` | **fait** (tests : filtres, graphe) |
-| 2 | l'entrée MIDI (`Midi.h`, RtMidi) et le MIDI learn | à faire |
-| 3 | le panneau Interaction et le panneau de paramètres, rendus génériques sur l'arbre | à faire |
-| 4 | les presets (snapshots) par adresse | **fait** : `pxs::Preset` (`capture`, `recall`), voir ci-dessous ; NyxMap l'adopte à l'étape 6 |
-| 5 | le WebSocket `LISTEN` du serveur | à faire |
-| 6 | NyxMap utilise les versions de `pxs` et supprime ses copies | à faire, en dernier |
+| 1 | the interaction model and filter engine (`Interactions.h`, `Anim.h`, graph): `pxs::interaction` | **done** (tests: filters, graph) |
+| 2 | MIDI input (`Midi.h`, RtMidi) and MIDI learn | to do |
+| 3 | the Interaction panel and the parameter panel, made generic over the tree | to do |
+| 4 | presets (snapshots) by address | **done**: `pxs::Preset` (`capture`, `recall`), see below; NyxMap adopts it in step 6 |
+| 5 | the server's `LISTEN` WebSocket | to do |
+| 6 | NyxMap uses the `pxs` versions and removes its copies | to do, last |
 
-Le filtre par signal de MpOsc (inversion, attaque, relâchement) devient une interaction de `pxs` (étape 3 pour son interface).
+MpOsc's per-signal filter (inversion, attack, release) becomes a `pxs` interaction (step 3 for its interface).
 
-## Ce qui est déjà fait, et ce qui vient
+## What is already done, and what comes next
 
-| | État |
+| | State |
 |---|---|
-| arbre, trois sortes de feuilles, sortie unique, OSCQuery | fait (v0.13.0) |
-| service réseau (UDP, HTTP, mDNS) | fait (v0.13.0) |
-| liaison des widgets existants (`pxs::bind`) | fait (v0.13.0) |
-| libellé, verrou, réinitialisation, observateurs | fait, à publier (v0.14.0) |
-| modèle des interactions (extrait de NyxMap) | fait, à publier |
-| MIDI, learn, panneaux, presets, `LISTEN` | voir le tableau des étapes |
+| tree, three kinds of leaves, single output, OSCQuery | done (v0.13.0) |
+| network service (UDP, HTTP, mDNS) | done (v0.13.0) |
+| binding of existing widgets (`pxs::bind`) | done (v0.13.0) |
+| label, lock, reset, observers | done, to be released (v0.14.0) |
+| interaction model (extracted from NyxMap) | done, to be released |
+| MIDI, learn, panels, presets, `LISTEN` | see the steps table |
 
-## Presets par adresse : `pxs::Preset`
+## Presets by address: `pxs::Preset`
 
-Un preset tient les **valeurs** de paramètres (par adresse, au format du `VALUE` d'OSCQuery) et des **actions à faire** au
-rappel, avec leurs arguments. Le rappel met les valeurs d'abord, puis fait les actions dans l'ordre : le média est mis en
-lecture, puis rembobiné. Un paramètre verrouillé garde sa valeur, une action verrouillée n'est pas faite, une adresse que
-l'arbre n'a plus est comptée sans erreur (`RecallResult`).
+A preset holds parameter **values** (by address, in the format of OSCQuery's `VALUE`) and **actions to run** on recall,
+with their arguments. Recall sets the values first, then runs the actions in order: the media is set to play, then
+rewound. A locked parameter keeps its value, a locked action is not run, an address the tree no longer has is counted
+without error (`RecallResult`).
 
-- Par défaut : tout paramètre lisible, écrivable et sauvegardé (`Parameter::isStored`), jamais un paramètre `transient` (un
-  état du spectacle) ni une action. Une sélection d'adresses restreint.
-- **Les actions sont choisies par le preset**, pas « toutes » : rappeler un preset ne fait pas `stop` ni `go` partout.
-- Le format est du JSON (`Preset::toJson` / `fromJson`) ; l'application décide où il vit. Le fondu d'un preset, et ce qui n'est
-  pas un paramètre (animations, interactions de NyxMap), restent à l'application.
+- By default: every readable, writable and saved parameter (`Parameter::isStored`), never a `transient` parameter (a
+  show state) nor an action. A selection of addresses narrows it.
+- **Actions are chosen by the preset**, not "all of them": recalling a preset does not run `stop` or `go` everywhere.
+- The format is JSON (`Preset::toJson` / `fromJson`); the application decides where it lives. A preset's fade, and what
+  is not a parameter (animations, NyxMap's interactions), stay with the application.
 
-**Rembobiner s'appelle `rewind`, partout** : la feuille d'action d'un média, d'un shader, d'un diaporama, d'un timecode.
-« Redémarrer » n'existe pas : c'est `play = vrai` puis `rewind`, ce qu'un preset tient avec les deux.
+**Rewinding is called `rewind`, everywhere**: the action leaf of a media, a shader, a slideshow, a timecode.
+"Restart" does not exist: it is `play = true` then `rewind`, which a preset holds with both.
 
-## Autres idées, pas encore décidées
+## Other ideas, not yet decided
 
-1. **Un drapeau « interne »** sur un nœud, pour ne pas exposer à l'extérieur ce qui ne sert qu'à l'interface.
-2. **Limitation de débit** des signaux envoyés (par exemple 30 par seconde au plus par adresse).
-3. **Annuler / rétablir** pour les modifications faites dans le panneau.
+1. **An "internal" flag** on a node, so that what only serves the interface is not exposed to the outside.
+2. **Rate limiting** of the signals sent (for example at most 30 per second per address).
+3. **Undo / redo** for changes made in the panel.
