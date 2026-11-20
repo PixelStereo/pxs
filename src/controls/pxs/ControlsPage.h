@@ -560,7 +560,9 @@ inline constexpr char kScriptC[] = R"JS(
       if (editing) { // a bin beside the name: the page and what is on it go at once (the undo brings them back)
         const x = el('span', 'tbin', '🗑'); x.title = 'Delete this page';
         x.onclick = e => { e.stopPropagation(); const ids = pageItems(p.id).map(c => c.id); if (p.id) ids.push(p.id); if (ids.length) { send({ t: 'remove', ids }); sel = new Set(); sheetId = 0; } };
-        b.appendChild(x);
+        const cl = el('span', 'tbin', '🧹'); cl.title = 'Clear this page (keep the page)';
+        cl.onclick = e => { e.stopPropagation(); const ids = pageItems(p.id).map(c => c.id); if (ids.length) { send({ t: 'remove', ids }); sel = new Set(); sheetId = 0; } };
+        b.appendChild(cl); b.appendChild(x);
       }
     });
     grid.textContent = ''; Object.keys(tiles).forEach(k => delete tiles[k]);
