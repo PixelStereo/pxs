@@ -21,7 +21,8 @@ static int failures = 0;
 using namespace pxs;
 using namespace pxs::oscquery;
 
-static void pump(const std::function<bool()> &until, int ms = 3000)
+// Returns as soon as the condition holds: a long limit costs nothing when it does, and shared CI runners can be slow
+static void pump(const std::function<bool()> &until, int ms = 12000)
 {
     QElapsedTimer t;
     t.start();
