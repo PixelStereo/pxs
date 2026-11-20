@@ -179,6 +179,15 @@ public:
     }
     bool update(quint64 id, const Control &changed) override { if (Control *c = find(id)) { *c = changed; ++rev; return true; } return false; }
     bool restore(const std::vector<Control> &controls) override { list = controls; ++rev; return true; }
+    quint64 add(const Control &c) override
+    {
+        quint64 top = 0;
+        for (const Control &o : list) top = std::max(top, o.id);
+        list.push_back(c);
+        list.back().id = top + 1;
+        ++rev;
+        return top + 1;
+    }
     bool remove(quint64 id) override
     {
         for (size_t i = 0; i < list.size(); ++i)
@@ -297,6 +306,37 @@ int main(int argc, char **argv)
         require(fake.list.size() == 1, "redo removes it again");
         phone.sendText("{\"t\":\"undo\"}");
         phone.pumpUntil([&] { return fake.list.size() == 2; });
+        // Several tiles: copy and paste, remove several, cut; each one step of undo
+        phone.sendText("{\"t\":\"copy\",\"ids\":[\"1\",\"2\"]}");
+        phone.sendText("{\"t\":\"paste\",\"page\":\"0\"}");
+        phone.pumpUntil([&] { return fake.list.size() == 4; });
+        require(fake.list.size() == 4 && fake.list[2].id != fake.list[0].id && fake.list[2].name == fake.list[0].name, "pasted: new controls, the copies of the tiles");
+        phone.sendText("{\"t\":\"undo\"}");
+        phone.pumpUntil([&] { return fake.list.size() == 2; });
+        require(fake.list.size() == 2, "a paste is one step of undo");
+        phone.sendText("{\"t\":\"remove\",\"ids\":[\"1\",\"2\"]}");
+        phone.pumpUntil([&] { return fake.list.empty(); });
+        require(fake.list.empty(), "several tiles removed at once");
+        phone.sendText("{\"t\":\"undo\"}");
+        phone.pumpUntil([&] { return fake.list.size() == 2; });
+        require(fake.list.size() == 2, "removing several is one step of undo");
+        const QString cutName = fake.find(2)->name;
+        phone.sendText("{\"t\":\"cut\",\"ids\":[\"2\"]}");
+        phone.pumpUntil([&] { return fake.list.size() == 1; });
+        phone.sendText("{\"t\":\"paste\",\"page\":\"0\"}");
+        phone.pumpUntil([&] { return fake.list.size() == 2; });
+        require(fake.list.size() == 2 && fake.list.back().name == cutName, "a cut tile can be pasted once it is gone");
+        phone.sendText("{\"t\":\"undo\"}");
+        phone.sendText("{\"t\":\"undo\"}");
+        phone.pumpUntil([&] { return fake.list.size() == 2 && fake.find(2); });
+        require(fake.find(1) && fake.find(2), "undone: the tiles are as they were");
+        // The current page, shared by the clients when the application wants it
+        server.setSharedPage(true);
+        phone.in.clear();
+        phone.sendText("{\"t\":\"showPage\",\"id\":\"7\"}");
+        phone.pumpUntil([&] { for (const QJsonObject &m : phone.messages()) if (m.value("t") == "page") return true; return false; });
+        require(server.currentPage() == 7, "a client's page is the current page when shared");
+        server.setSharedPage(false);
         // Physics: a slider held to the hand by a spring
         phone.sendText("{\"t\":\"edit\",\"id\":\"1\",\"props\":{\"physics\":{\"mode\":2,\"friction\":30,\"attraction\":150,\"tension\":0}}}");
         phone.pumpUntil([&] { return fake.find(1)->physics.mode == 2; });

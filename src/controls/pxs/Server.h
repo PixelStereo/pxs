@@ -21,6 +21,9 @@
 //   client -> {"t":"rel","id":"..."}   the hand let go of a control: its physics (Control::physics) takes over
 //   client -> {"t":"drop","data":"<text>","page":"<id>","x":..,"y":..}   something dragged onto the page from outside (the application's own message: `message()`)
 //   client -> {"t":"layout","items":{"<id>":{"x","y","w","h"}}}   {"t":"edit","id":..,"props":{…}} (Control::applyProps)   {"t":"remove","id":..}
+//   client -> {"t":"remove","ids":["..",".."]}   several at once (one step of undo)
+//   client -> {"t":"copy","ids":[..]} / {"t":"cut","ids":[..]} / {"t":"paste","page":"<id>"}   the clipboard is the server's, for every client
+//   client <-> {"t":"showPage","id":".."} / server -> {"t":"page","id":".."}   with setSharedPage: the current page, the same for every client
 // An application adds its own pages and messages through the hooks (servePage, message, tick).
 #include "Control.h"
 #include "Physics.h"
@@ -95,6 +98,12 @@ public:
     // How many words of an address (between slashes) a tile shows as its name: the last two by default, 1 to 4
     void setNameParts(int parts);
     void setPageOptions(const QString &inspector, const QString &physicsWidget);
+    // One current page for every client: a tab clicked on one page shows on all of them (off: each client has its own). The page is a top-level
+    // Group's id; setCurrentPage tells everybody (an application's own command), pageShown says a client chose one
+    void setSharedPage(bool on);
+    bool sharedPage() const { return m_sharedPage; }
+    quint64 currentPage() const { return m_currentPage; }
+    void setCurrentPage(quint64 id);
     // The largest message a client may send (4 KB: a control's settings). An application that takes a whole document raises it
     void setMaxFrame(quint64 bytes) { m_maxFrame = bytes; }
 
@@ -107,6 +116,7 @@ signals:
     void clientsChanged(int count);
     void layoutEdited(); // a client laid the page out, set a tile or removed a control: the application is modified
     void controlMoved(); // a control was set from a client
+    void pageShown(quint64 id); // the current page changed (a client chose it, or setCurrentPage)
 
 protected:
     // Hooks: another page of the application (true: served as `html` under `csp`), another message of a client (true: taken), what to do
@@ -165,6 +175,11 @@ private:
     QJsonObject m_sizes;
     int m_nameParts = 2;
     QString m_inspector = QStringLiteral("always"), m_physicsWidget = QStringLiteral("knob");
+    bool m_sharedPage = false;
+    quint64 m_currentPage = 0;
+    std::vector<Control> m_clipboard; // copied or cut tiles (with what a section holds), for every client
+    int m_pastes = 0;                 // pasted since the last copy: each one lands a little further
+    void pasteClipboard(quint64 page);
     quint64 m_maxFrame = 4096;
     QHash<QString, Attempts> m_attempts; // by address
 };
