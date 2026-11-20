@@ -38,6 +38,11 @@ int main(int argc, char **argv)
         CHECK(art.validate().isEmpty() && sacn.validate().isEmpty());
         Output o = art;
         o.rate = 60;
+        CHECK(!o.validate().isEmpty()); // Art-Net stops at 44
+        o = sacn;
+        o.rate = 100;
+        CHECK(o.validate().isEmpty() && o.maxRate() == 120); // sACN does not
+        o.rate = 121;
         CHECK(!o.validate().isEmpty());
         o = art;
         o.delivery = Delivery::Unicast;
@@ -81,6 +86,7 @@ int main(int argc, char **argv)
         const Output art = Output::fromJson(QJsonObject{{"protocol", "artnet"}});
         CHECK(art.firstUniverse == 0 && art.delivery == Delivery::Group && art.rate == 40 && art.priority == 100);
         CHECK(Output::fromJson(QJsonObject{{"rate", 500}, {"priority", 900}}).rate == 44);
+        CHECK(Output::fromJson(QJsonObject{{"protocol", "sacn"}, {"rate", 500}}).rate == 120);
     }
 
     // Routing: the application's universes shifted onto each output's range

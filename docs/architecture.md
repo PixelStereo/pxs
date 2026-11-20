@@ -111,7 +111,7 @@ applications that draw or play, since it needs frames, decoders and libraries th
   the application's.
 - **`pxs::dmxout`** is the output side, so that NyxMap, Cold-Flame and every other application describe, save and send their
   DMX the same way. An `Output` carries what consoles and QLC+ offer: Art-Net or sACN, **unicast** or the protocol's **group**
-  (Art-Net broadcast on the card's network, sACN multicast), the network card, a port, a rate (1 to 44 Hz), the sACN priority and
+  (Art-Net broadcast on the card's network, sACN multicast), the network card, a port, a rate (1 to 44 Hz for Art-Net, the protocol's limit, up to 120 for sACN), the sACN priority and
   source name, **full or partial** frames (partial: only the channels the application hands over), and a map from the
   application's universes to the network's (Art-Net counts from 0, sACN from 1). `route()` applies it; an application that
   already knows each output's universes addresses `(output, universe)` itself. The `Sender` runs on its own thread, so lights
