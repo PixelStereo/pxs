@@ -27,7 +27,7 @@ Output Output::defaults(Protocol protocol)
 
 QString Output::validate() const
 {
-    if (rate < 1 || rate > 44) return QStringLiteral("The rate is 1 to 44 frames per second");
+    if (rate < 1 || rate > maxRate()) return QStringLiteral("The rate is 1 to %1 frames per second").arg(maxRate());
     if (priority < 0 || priority > 200) return QStringLiteral("The sACN priority is 0 to 200");
     if (port < 0 || port > 65535) return QStringLiteral("The port is 0 to 65535");
     if (!interfaceAddress.isEmpty() && !ipv4(interfaceAddress)) return QStringLiteral("The network card is an IPv4 address");
@@ -82,7 +82,7 @@ Output Output::fromJson(const QJsonObject &j)
     for (const QJsonValue &v : j.value("destinations").toArray()) o.destinations << v.toString();
     o.interfaceAddress = j.value("interface").toString();
     o.port = j.value("port").toInt(0);
-    o.rate = std::clamp(j.value("rate").toDouble(o.rate), 1.0, 44.0);
+    o.rate = std::clamp(j.value("rate").toDouble(o.rate), 1.0, o.maxRate());
     o.priority = std::clamp(j.value("priority").toInt(o.priority), 0, 200);
     o.sourceName = j.value("sourceName").toString(o.sourceName);
     o.transmission = j.value("transmission").toString() == QLatin1String("partial") ? Transmission::Partial : Transmission::Full;

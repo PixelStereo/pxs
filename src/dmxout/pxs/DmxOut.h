@@ -36,7 +36,7 @@ struct Output {
     QStringList destinations;  // Unicast: IPv4 addresses
     QString interfaceAddress;  // the local IPv4 address to send from (a network card); empty: the system routes
     int port = 0;              // 0: the protocol's (Art-Net 6454, sACN 5568)
-    double rate = 40;          // frames per second and universe, 1..44 (Art-Net's limit)
+    double rate = 40;          // frames per second and universe, 1 to maxRate()
     int priority = 100;        // sACN, 0..200
     QString sourceName = QStringLiteral("pxs"); // sACN
     Transmission transmission = Transmission::Full;
@@ -48,6 +48,7 @@ struct Output {
     static Output defaults(Protocol protocol);
     int effectivePort() const { return port > 0 ? port : protocol == Protocol::ArtNet ? artNetPort : sacnPort; }
     int highestUniverse() const { return protocol == Protocol::ArtNet ? 32767 : 63999; }
+    double maxRate() const { return protocol == Protocol::ArtNet ? 44 : 120; } // Art-Net's limit; sACN has none, LED pixels want more
     // Why it cannot work, or empty
     QString validate() const;
     bool operator==(const Output &other) const;
