@@ -35,6 +35,7 @@ That is all it takes for any OSCQuery client to find the app, read its tree, lis
 | `pxs::interaction` | a value driven from outside (key, MIDI, OSC, signal, audio) through a chain of filters, with pick-up and an Action mode (NyxMap's Interaction panel, for everyone) |
 | `pxs::midi` | MIDI messages as events (parse, build, **learn**), the ports, the inputs to listen to; bring your own RtMidi (`PXS_RTMIDI_TARGET`) or use the system one |
 | `pxs::dmx` | Art-Net and sACN frames, encoded and decoded, strictly checked; Qt Core only |
+| `pxs::dmxout` | the **DMX outputs** of an application, the same everywhere: an `Output` (Art-Net or sACN, unicast or the protocol's group, network card, port, rate, sACN priority and source name, full or partial frames, a map from your universes to the network's; validated, saved as JSON), `route()` to apply it, and a `Sender` that streams the universes on a thread of its own with a sequence per universe, per-channel sACN priorities and clean end of stream |
 | `pxs::dmxnet` | a **Monitor** (what every source sends, the HTP / LTP / sACN priority merge) and a **Transmitter** that recognises its own frames |
 | `pxs::bind` | expose an interface's own widgets as parameters and actions |
 | `pxs::controls` | a web page of controls (free grid, pages, edit mode, SVG widgets) and the server behind it |

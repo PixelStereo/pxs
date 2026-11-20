@@ -109,6 +109,16 @@ applications that draw or play, since it needs frames, decoders and libraries th
 
 - **`pxs::dmx`** is the codec alone (Art-Net, sACN): frames in, frames out, strictly checked. What a channel drives is
   the application's.
+- **`pxs::dmxout`** is the output side, so that NyxMap, Cold-Flame and every other application describe, save and send their
+  DMX the same way. An `Output` carries what consoles and QLC+ offer: Art-Net or sACN, **unicast** or the protocol's **group**
+  (Art-Net broadcast on the card's network, sACN multicast), the network card, a port, a rate (1 to 44 Hz), the sACN priority and
+  source name, **full or partial** frames (partial: only the channels the application hands over), and a map from the
+  application's universes to the network's (Art-Net counts from 0, sACN from 1). `route()` applies it; an application that
+  already knows each output's universes addresses `(output, universe)` itself. The `Sender` runs on its own thread, so lights
+  get a steady stream whatever the application's frame rate: a sequence for each universe, the sACN identity, a priority for
+  each channel the application owns (so a receiver takes the others from another source), and the three terminated frames when
+  an output goes off. Applications are before version 1: no legacy format is kept, a project written for an older one is
+  edited by hand. Still to come: the panel that edits a list of outputs, and Art-Net node discovery (ArtPoll) to pick a destination.
 - **`pxs::dmxnet`** (from DMXPulse) is what an application needs to watch a DMX network or to send onto it: a `Monitor`
   (sockets shared with other lighting software, what each source sends, the merge of the sources of a universe) and a
   `Transmitter` (the sequence, the sACN identity, multicast out of the chosen interface) that lets the monitor recognise the

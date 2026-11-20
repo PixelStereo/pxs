@@ -66,6 +66,33 @@ int main()
     data[112] = char(0x80); // a reserved flag
     CHECK(!decode(data, true, stopped));
 
+    // Partial frames: only the channels asked for (Art-Net rounds up to an even number); an sACN per-channel priority keeps its start code
+    for (bool sacn : {false, true}) {
+        Frame f;
+        f.sacn = sacn;
+        f.universe = 1;
+        f.values = QByteArray(512, char(9));
+        f.length = 11;
+        const QByteArray packet = encode(f);
+        Frame back;
+        CHECK(decode(packet, sacn, back) && back.length == (sacn ? 11 : 12) && back.values[10] == 9 && back.values[sacn ? 11 : 12] == 0);
+        CHECK(packet.size() == (sacn ? 126 + 11 : 18 + 12));
+        f.length = 1;
+        CHECK(decode(encode(f), sacn, back) && back.length == (sacn ? 1 : 2));
+        f.length = 9999;
+        CHECK(decode(encode(f), sacn, back) && back.length == 512);
+    }
+    {
+        Frame priorities;
+        priorities.sacn = true;
+        priorities.universe = 2;
+        priorities.startCode = 0xDD;
+        const QByteArray packet = encode(priorities);
+        CHECK(quint8(packet[125]) == 0xDD);
+        Frame ignored;
+        CHECK(!decode(packet, true, ignored)); // a monitor does not read priorities as levels
+    }
+
     // The multicast group of a universe
     CHECK(sacnGroup(1) == "239.255.0.1" && sacnGroup(514) == "239.255.2.2");
 
