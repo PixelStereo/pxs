@@ -583,8 +583,9 @@ inline constexpr char kScriptC[] = R"JS(
   document.addEventListener('drop', e => {
     if (!droppable(e)) return;
     e.preventDefault();
-    const r = $('#grid').getBoundingClientRect();
-    send({ t: 'drop', data: e.dataTransfer.getData(dropType), page: String(pageId), x: compact ? 0 : clamp(Math.floor((e.clientX - r.left) / cell), 0, 11), y: compact ? 9999 : Math.max(0, Math.floor((e.clientY - r.top) / rowH)) });
+    const r = $('#grid').getBoundingClientRect(), tl = e.target && e.target.closest ? e.target.closest('.tile') : null; // a macro's tile: the address is added to it
+    const onto = tl ? Object.keys(tiles).find(k => tiles[k].el === tl) : null, macro = onto && byId[onto] && byId[onto].targets && byId[onto].targets.length;
+    send({ t: 'drop', data: e.dataTransfer.getData(dropType), onto: macro ? onto : undefined, page: String(pageId), x: compact ? 0 : clamp(Math.floor((e.clientX - r.left) / cell), 0, 11), y: compact ? 9999 : Math.max(0, Math.floor((e.clientY - r.top) / rowH)) });
   });
   $('#edit').onclick = () => { editing = !editing; $('#edit').classList.toggle('on', editing); document.body.classList.toggle('insp', editing && inspectorMode === 'always'); if (!editing) { closeSheet(); sel = new Set(); } render(); };
 )JS";
@@ -687,6 +688,7 @@ inline constexpr char kScriptD[] = R"JS(
       say(c.curve || 1); sh.appendChild(r); sh.appendChild(hint);
       }
     }
+    if (c.targets && c.targets.length) targetEditor(sh, c, numeric);
     if (c.kind === 'points' && c.balls && c.balls.length) ballEditor(sh, c, field, text, numeric);
     else if (c.physics) physFields(sh, c.physics, ph => push({ physics: ph }), key => { flush(); send({ t: 'physicsWidget', id: c.id, key }); });
     const del = el('button', 'del', 'Delete this control'); del.onclick = () => { send({ t: 'remove', id: c.id }); sheetId = 0; };
@@ -711,6 +713,37 @@ inline constexpr char kScriptE[] = R"JS(
     sh.appendChild(row);
     const del = el('button', 'del', 'Delete these ' + sel.size + ' tiles'); del.onclick = removeSelected; sh.appendChild(del);
     sh.classList.add('open'); sh.classList.toggle('pinned', inspectorMode === 'always');
+  }
+  // A macro: the parameters it sends to, each with its own range (the value where the control is lowest, and highest), curve and, for a pad, axis
+  function targetEditor(sh, c, numeric) {
+    sh.appendChild(el('label', '', 'Sends to'));
+    const rows = c.targets.map((t, i) => ({ i, min: t.min, max: t.max, curve: t.curve, axis: t.axis }));
+    const send2 = () => push({ targets: rows });
+    const box = el('div');
+    const draw = () => {
+      box.textContent = '';
+      rows.forEach((r, k) => {
+        const t = c.targets[r.i], line = el('div'); line.style.cssText = 'border:1px solid var(--line);border-radius:9px;padding:8px;margin:0 0 8px';
+        const head = el('div'); head.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px';
+        const nm = el('span', '', t.label || t.path); nm.title = t.path; nm.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px';
+        const del = el('button', 'hb', '✕'); del.title = 'Stop sending to this one'; del.onclick = () => { rows.splice(k, 1); send2(); draw(); };
+        head.appendChild(nm); head.appendChild(del); line.appendChild(head);
+        const fields = el('div', 'row');
+        [['min', 'From'], ['max', 'To'], ['curve', 'Curve']].forEach(f => {
+          const d = el('div'); d.appendChild(el('label', '', f[1]));
+          const i = numeric(r[f[0]], v => { r[f[0]] = f[0] === 'curve' ? Math.max(0.1, Math.min(10, v)) : v; send2(); }, f[0] === 'curve' ? '0.1' : 'any'); d.appendChild(i); fields.appendChild(d);
+        });
+        line.appendChild(fields);
+        if (c.kind === 'pad') {
+          const sel = el('select'); [['0', 'X'], ['1', 'Y']].forEach(o => sel.appendChild(Object.assign(el('option', '', o[1]), { value: o[0] }))); sel.value = String(r.axis);
+          sel.onchange = () => { r.axis = Number(sel.value); send2(); }; line.appendChild(el('label', '', 'Axis')); line.appendChild(sel);
+        }
+        box.appendChild(line);
+      });
+      if (!rows.length) box.appendChild(el('div', 'hint', 'Nothing left to send to: drag an address onto this tile to add one.'));
+    };
+    draw(); sh.appendChild(box);
+    sh.appendChild(el('div', 'hint', 'Drag an address from the tree onto this tile to send to it too. A curve above 1 is fine at the low end.'));
   }
   const selIds = () => Array.from(sel).filter(k => byId[k]);
   function removeSelected() { const ids = selIds(); if (!ids.length) return; send({ t: 'remove', ids }); sel = new Set(); sheetId = 0; }

@@ -79,6 +79,9 @@ bool setBoundPoints(const Control &c, ParameterSource &source, const std::vector
 bool setBoundPoint(const Control &c, ParameterSource &source, double x, double y); // a pad's two parameters
 void fillBound(Control &c, const ParameterSource &source);                  // its value, range, step and choices, now
 bool setBound(const Control &c, ParameterSource &source, double value);      // the parameter is what is set
+// A macro's value (a Slider, a Toggle, a Button, or one axis of a Pad), sent to each target of that axis through its curve into its range. A button sends
+// nothing when it is let go if `onRelease` is false (a scene: it sends what it was set to once). True when something was sent
+bool setTargets(const Control &c, ParameterSource &source, double value, int axis = 0, bool onRelease = true);
 bool setBoundColor(const Control &c, ParameterSource &source, double r, double g, double b);
 
 } // namespace pxs::controls

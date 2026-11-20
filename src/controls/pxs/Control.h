@@ -52,6 +52,18 @@ struct Physics {
     }
 };
 
+// One of the parameters a control sends to when it is a macro (Control::targets): the control's value (0 to 1 of its own range) goes through a
+// curve to this parameter's own range, `outMin` where the control is at its lowest and `outMax` at its highest (outMin above outMax: inverted).
+// A Pad sends its X to the targets of axis 0 and its Y to those of axis 1
+struct Target {
+    quint64 scope = 0;
+    QString path;
+    double outMin = 0, outMax = 1;
+    double curve = 1; // 1 linear, above 1 fine at the low end, below 1 fine at the high end (the same as a slider's gesture)
+    int axis = 0;
+    QString label; // derived, not kept: where it is, for the page to show (the application tells)
+};
+
 // A ball of a Points control: where its X and Y go (OSC addresses on the control's device: empty, it is only on the page), the range of
 // each, its name, its color and its physics
 struct Ball {
@@ -102,6 +114,10 @@ struct Control {
     QString widget, accent;
     double curve = 1;
     Physics physics; // Slider, Pad, Multi: what moves its numbers (a Points control has one for each ball)
+    // A macro: a Slider, a Toggle, a Button or a Pad that has a value of its own and sends it to several parameters, each in its own range and
+    // with its own curve. Not a view: nothing is read back from the parameters
+    std::vector<Target> targets;
+    static constexpr int kTargetsMax = 32;
     // A view of a parameter: where it is (the application's own scope: a layer in NyxMap, a device in an explorer; 0: the application's
     // own) and its address there. The control has no value of its own: it shows the parameter and sets it, so that a change made anywhere
     // shows on the page too
@@ -180,6 +196,7 @@ struct Control {
         return out;
     }
     // A view of parameters: a parameter, or a Points control (whose balls give theirs)
+    bool macro() const { return !targets.empty(); }
     bool bound() const { return !boundParam.isEmpty() || (kind == Kind::Points && boundScope != 0); }
     QStringList boundPaths() const // every address this control reads and sets
     {
@@ -244,6 +261,12 @@ struct Control {
             o["bind"] = b;
         }
         if (physTarget) o["physicsOf"] = QJsonObject{{"id", QString::number(physTarget)}, {"key", physKey}};
+        if (!targets.empty()) {
+            QJsonArray list;
+            for (const Target &t : targets)
+                list.append(QJsonObject{{"scope", QString::number(t.scope)}, {"path", t.path}, {"min", t.outMin}, {"max", t.outMax}, {"curve", t.curve}, {"axis", t.axis}});
+            o["targets"] = list;
+        }
         if (!widget.isEmpty()) o["widget"] = widget;
         if (!accent.isEmpty()) o["accent"] = accent;
         if (curve != 1) o["curve"] = curve;
@@ -322,6 +345,24 @@ struct Control {
         if (p.contains("widget")) widget = cleanWidget(p.value("widget").toString());
         if (p.contains("accent")) accent = cleanAccent(p.value("accent").toString());
         if (physical() && p.value("physics").isObject()) physics.apply(p.value("physics").toObject());
+        if (!targets.empty() && p.value("targets").isArray()) { // by position: its range, its curve, its axis; one that is left out is removed
+            std::vector<Target> next;
+            for (const QJsonValue &v : p.value("targets").toArray()) {
+                const QJsonObject t = v.toObject();
+                const int i = t.value("i").toInt(-1);
+                if (i < 0 || size_t(i) >= targets.size()) continue;
+                Target n = targets[size_t(i)];
+                auto num = [&](const char *key, double lo, double hi, double &into) {
+                    if (t.value(key).isDouble() && std::isfinite(t.value(key).toDouble())) into = std::clamp(t.value(key).toDouble(), lo, hi);
+                };
+                num("min", -1e9, 1e9, n.outMin);
+                num("max", -1e9, 1e9, n.outMax);
+                num("curve", 0.1, 10, n.curve);
+                if (t.value("axis").isDouble()) n.axis = t.value("axis").toInt() == 1 ? 1 : 0;
+                next.push_back(std::move(n));
+            }
+            targets = std::move(next);
+        }
         if (kind == Kind::Adsr) {
             number("max", max);
             max = std::clamp(max, 0.1, 60.0);
@@ -372,7 +413,14 @@ struct Control {
         if (group) o["group"] = QString::number(group);
         o["span"] = span;
         if ((bound() || physTarget) && !boundLabel.isEmpty()) o["dest"] = boundLabel;
+        if (!targets.empty()) o["dest"] = QString("%1 target%2").arg(targets.size()).arg(targets.size() == 1 ? "" : "s");
         if (!resets.isEmpty()) o["reset"] = true;
+        if (!targets.empty()) {
+            QJsonArray list;
+            for (const Target &t : targets)
+                list.append(QJsonObject{{"path", t.path}, {"label", t.label}, {"min", t.outMin}, {"max", t.outMax}, {"curve", t.curve}, {"axis", t.axis}});
+            o["targets"] = list;
+        }
         if (!widget.isEmpty()) o["widget"] = widget;
         if (!accent.isEmpty()) o["accent"] = accent;
         if (curve != 1) o["curve"] = curve;
@@ -459,6 +507,18 @@ struct Control {
             c.boundParam = b.value("param").toString();
             c.boundParam2 = b.value("param2").toString();
             c.boundLabel = b.value("label").toString().left(160);
+        }
+        for (const QJsonValue &v : o.value("targets").toArray()) {
+            const QJsonObject t = v.toObject();
+            if (c.targets.size() >= size_t(kTargetsMax) || t.value("path").toString().isEmpty()) continue;
+            Target n;
+            n.scope = t.value("scope").toString().toULongLong();
+            n.path = t.value("path").toString();
+            n.outMin = t.value("min").toDouble(0);
+            n.outMax = t.value("max").toDouble(1);
+            n.curve = std::clamp(t.value("curve").toDouble(1), 0.1, 10.0);
+            n.axis = t.value("axis").toInt(0) == 1 ? 1 : 0;
+            c.targets.push_back(std::move(n));
         }
         if (const QJsonObject po = o.value("physicsOf").toObject(); !po.isEmpty()) {
             c.physTarget = po.value("id").toString().toULongLong();
