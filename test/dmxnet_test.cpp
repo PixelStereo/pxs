@@ -83,7 +83,7 @@ int main(int argc, char **argv)
     {
         Monitor m;
         QStringList lines;
-        QObject::connect(&m, &Monitor::event, [&](const QString &line) { lines << line; });
+        QObject::connect(&m, &Monitor::logged, [&](const QString &line) { lines << line; });
         CHECK(m.ingest(sacn(1, 100, cidA, 10, levels({{1, 5}})), a, 5568, true));
         CHECK(!m.ingest(sacn(1, 100, cidA, 9, levels({{1, 6}})), a, 5568, true));
         CHECK(m.stats().reordered == 1 && at(m.merged(true, 1, MergeMode::HTP, false), 1) == 5);

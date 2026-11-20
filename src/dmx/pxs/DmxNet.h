@@ -103,7 +103,7 @@ public:
     bool ingest(const QByteArray &data, const QHostAddress &from, quint16 port, bool sacn, uint interfaceIndex = 0);
 
 signals:
-    void event(const QString &line);   // one line for the application's log: "RX · Art-Net · U0 · 192… · seq 3 · 1=255"
+    void logged(const QString &line); // one line for the application's log: "RX · Art-Net · U0 · 192… · seq 3 · 1=255"
     void problem(const QString &text); // something that does not stop it (a local unicast listener unavailable…)
 
 private:

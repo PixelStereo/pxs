@@ -177,7 +177,7 @@ bool Monitor::ingest(const QByteArray &data, const QHostAddress &from, quint16 p
     Frame f;
     if (!decode(data, isSacn, f)) {
         ++m_stats.invalid;
-        emit event(QStringLiteral("RX unsupported · %1:%2 · %3 bytes").arg(from.toString()).arg(port).arg(data.size()));
+        emit logged(QStringLiteral("RX unsupported · %1:%2 · %3 bytes").arg(from.toString()).arg(port).arg(data.size()));
         return false;
     }
     const QString key = QStringLiteral("%1/%2/%3/%4/%5")
@@ -186,7 +186,7 @@ bool Monitor::ingest(const QByteArray &data, const QHostAddress &from, quint16 p
                             .arg(isSacn ? QString() : from.toString(), QString::fromLatin1(f.cid.toHex()))
                             .arg(isSacn ? 0 : port);
     if (f.terminated) {
-        emit event(QStringLiteral("RX · sACN · U%1 · %2 · CID %3 · stream terminated")
+        emit logged(QStringLiteral("RX · sACN · U%1 · %2 · CID %3 · stream terminated")
                        .arg(f.universe)
                        .arg(from.toString(), QString::fromLatin1(f.cid.toHex())));
         m_streams.remove(key);
@@ -226,7 +226,7 @@ bool Monitor::ingest(const QByteArray &data, const QHostAddress &from, quint16 p
                        : port == m_transmitter->localPort() && m_transmitter->localPort() != 0 && from == m_transmitter->localAddress();
     }
     if (s.own) s.frame.name = m_ownLabel;
-    emit event(QStringLiteral("RX · %1 · U%2 · %3%4 · seq %5%6 · %7")
+    emit logged(QStringLiteral("RX · %1 · U%2 · %3%4 · seq %5%6 · %7")
                    .arg(isSacn ? "sACN" : "Art-Net")
                    .arg(f.universe)
                    .arg(s.ip, s.frame.name.isEmpty() ? QString() : QStringLiteral(" · ") + s.frame.name)
