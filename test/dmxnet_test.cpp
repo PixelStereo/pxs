@@ -168,7 +168,9 @@ int main(int argc, char **argv)
             // The sequence is the Transmitter's, from 1
             CHECK(t.lastSequence() == 1);
             CHECK(t.send(f, QHostAddress::LocalHost, &error) && t.lastPort() == 46454 && t.lastSequence() == 2);
-            CHECK(!t.send(Frame{.universe = -4}, QHostAddress::LocalHost, &error) && !error.isEmpty());
+            Frame outOfRange;
+            outOfRange.universe = -4;
+            CHECK(!t.send(outOfRange, QHostAddress::LocalHost, &error) && !error.isEmpty());
             m.stop();
             t.stop();
             CHECK(!m.listening() && !t.active());
