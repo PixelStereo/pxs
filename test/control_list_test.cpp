@@ -195,6 +195,52 @@ int main()
         const Control again = Control::fromJson(list[1].toJson());
         check(again.physTarget == 5 && again.physKey == "2.friction", "it goes through JSON");
     }
+    { // A macro: one value sent to several parameters, each in its own range, with its own curve
+        Fake f;
+        const auto add = [&](const QString &path, ParamInfo::Type type, double lo, double hi) {
+            ParamInfo i;
+            i.type = type;
+            i.min = lo;
+            i.max = hi;
+            f.infos[path] = i;
+            f.values[path] = 0.0;
+        };
+        add("/a", ParamInfo::Type::Float, 0, 100);
+        add("/b", ParamInfo::Type::Int, 0, 255);
+        add("/c", ParamInfo::Type::Bool, 0, 1);
+        add("/d", ParamInfo::Type::Float, 0, 1);
+        Control m;
+        m.kind = Control::Kind::Slider;
+        m.min = 0;
+        m.max = 1;
+        m.targets = {{1, "/a", 0, 100, 1, 0, {}}, {1, "/b", 255, 0, 1, 0, {}}, {1, "/c", 0, 1, 1, 0, {}}, {1, "/d", 0, 1, 2, 0, {}}, {1, "/gone", 0, 1, 1, 0, {}}};
+        check(m.macro() && !m.bound(), "a macro is not a view");
+        check(setTargets(m, f, 0.5), "a value goes to the targets there are");
+        check(std::abs(f.values["/a"].toDouble() - 50) < 1e-9, "a range");
+        check(std::abs(f.values["/b"].toDouble() - 127.5) < 1e-9, "an inverted range");
+        check(f.values["/c"].toBool(), "a switch from 0.5");
+        check(std::abs(f.values["/d"].toDouble() - 0.25) < 1e-9, "a curve of its own");
+        check(f.touchedPaths.contains("/a") && !f.touchedPaths.contains("/gone"), "what took is told");
+        const Control back = Control::fromJson(m.toJson());
+        check(back.targets.size() == 5 && back.targets[1].outMin == 255 && back.targets[3].curve == 2, "targets go through JSON");
+        Control e = m; // edited from the page: by position, one left out goes
+        e.applyProps(QJsonObject{{"targets", QJsonArray{QJsonObject{{"i", 3}, {"min", 0.2}, {"curve", 99}}, QJsonObject{{"i", 0}}, QJsonObject{{"i", 17}}}}});
+        check(e.targets.size() == 2 && e.targets[0].path == "/d" && e.targets[0].outMin == 0.2 && e.targets[0].curve == 10 && e.targets[1].path == "/a", "targets edited from the page");
+        Control scene;
+        scene.kind = Control::Kind::Button;
+        scene.targets = {{1, "/a", 20, 80, 1, 0, {}}};
+        f.values["/a"] = 0.0;
+        check(setTargets(scene, f, 1, 0, false) && f.values["/a"].toDouble() == 80, "a button sends its high value when pressed");
+        check(!setTargets(scene, f, 0, 0, false) && f.values["/a"].toDouble() == 80, "a scene button sends nothing when let go");
+        check(setTargets(scene, f, 0, 0, true) && f.values["/a"].toDouble() == 20, "a hold button sends its low value when let go");
+        Control pad;
+        pad.kind = Control::Kind::Pad;
+        pad.targets = {{1, "/a", 0, 100, 1, 0, {}}, {1, "/d", 0, 1, 1, 1, {}}};
+        f.values["/a"] = 0.0;
+        f.values["/d"] = 0.0;
+        setTargets(pad, f, 0.4, 0);
+        check(std::abs(f.values["/a"].toDouble() - 40) < 1e-9 && f.values["/d"].toDouble() == 0.0, "a pad's X goes to the X targets only");
+    }
     if (!failures) std::printf("control_list: ok\n");
     return failures ? 1 : 0;
 }

@@ -3,10 +3,17 @@
 // A client's frames are masked, a server's are not.
 
 #include <QByteArray>
+#include <QCryptographicHash>
 #include <QtEndian>
 
-namespace pxs::controls::websocket {
+namespace pxs::websocket {
 enum Opcode { Continuation = 0, Text = 1, Binary = 2, Close = 8, Ping = 9, Pong = 10 };
+
+// The Sec-WebSocket-Accept of a handshake, from the client's Sec-WebSocket-Key
+inline QByteArray acceptKey(const QByteArray &key)
+{
+    return QCryptographicHash::hash(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11", QCryptographicHash::Sha1).toBase64();
+}
 
 // A server frame to send (`opcode`, `payload`)
 inline QByteArray encode(int opcode, const QByteArray &payload)
@@ -57,4 +64,4 @@ inline int decode(QByteArray &buffer, int *opcode, QByteArray *payload, quint64 
     buffer.remove(0, pos + int(len));
     return 1;
 }
-} // namespace pxs::controls::websocket
+} // namespace pxs::websocket

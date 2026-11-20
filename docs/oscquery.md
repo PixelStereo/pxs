@@ -87,6 +87,45 @@ written says `CLIPMODE: both`: its value is kept within its limits.
 A node name cannot hold a space or any of `# * , ? [ ] { }` (they would break the address patterns): each becomes `_`, in
 `add()` and in `find()`, so the same name finds the same node.
 
+## What else a node can say
+
+`EXTENDED_TYPE` (what each argument is: `color.rgb.r`, `position.cartesian.x`, `filepath`…) and `UNIT` (`distance.m`,
+`angle.degree`, `gain.db`…) follow the proposal's lists (`extended_types.md`, `units.md`); `TAGS` for a client to filter by;
+`DEFAULT_VALUE` (libossia's name) for what a reset puts back. A `Parameter` says them with `unit("gain.db")` and
+`extendedType("filepath")`; a color or a point component says what it is by itself (`colorComponent(0)` is `color.rgb.r`,
+`pointComponent(1)` is `position.cartesian.y`). A node filled in by hand has `extendedType`, `unit` (one per argument, `""`
+for none: it says `null`) and `tags`. libossia's client reads the unit, the default and the tags (tried). The client
+(`RemoteNode`) reads them too, and the proposal's shorthands: one value for every argument instead of an array, `null`
+for none.
+
+## Who can reach it
+
+`OscService::setLocalOnly(true)` for an application that is for this computer only: UDP and HTTP/WebSocket are bound to the
+loopback, nothing is announced on the network, and no page of another site may read the answers (no CORS header).
+Otherwise any interface answers, and a page of another site may read (`setCorsOpen(false)` to refuse that alone). At most
+128 connections; a request that has not said what it wants within 10 s is dropped.
+
+## The WebSocket (the proposal's bi-directional side)
+
+`OscService` serves it on the HTTP port (`HOST_INFO` says `WS_PORT` and, in `EXTENSIONS`, `LISTEN` and `PATH_CHANGED`):
+
+- `{"COMMAND": "LISTEN", "DATA": "/layer/1/opacity"}` streams that address as binary OSC packets: a parameter that was written
+  or told changed (from OSC, a mapping, the panel, or the client itself), a signal that was fired. The address is exact:
+  `/layer` does not give `/layer/1/opacity`. `IGNORE` stops it. Actions say nothing.
+- A binary frame is an OSC packet for the application: it is applied like a UDP one (`messageReceived` too).
+- `PATH_ADDED` (`DATA`: the path, and the node's own description merged into the message) when a node is made, and
+  `PATH_REMOVED` (`DATA`: the path) when one is removed; what happens within 50 ms is coalesced (nodes inside one that was
+  made are said with it). `PATH_CHANGED` (the highest path that changed) when the tree is cleared or more than 64 things
+  changed at once. libossia's client follows `PATH_ADDED` and `PATH_REMOVED` and ignores `PATH_CHANGED` (its handler is
+  empty), so a node made later is seen by it only through those two; pxs's own client and NyxMap follow all three.
+- A WebSocket can write, so a page of another origin is refused (403): only a native client (no `Origin`) or a page of this
+  machine (localhost, a loopback or own address) gets in. At most 32 clients; a client more than 1 MB behind misses
+  frames instead of making the application wait.
+
+What is not there: `PATH_RENAMED` (the tree has no rename), `CRITICAL`, and TCP for the OSC itself.
+
+Threads: an observer runs on the thread that wrote; `OscService` hands what a socket must send to its own thread.
+
 ## Applying a message
 
 `apply()` writes a parameter when its access allows it and the argument fits its type: a number for `Float` and `Int` (an

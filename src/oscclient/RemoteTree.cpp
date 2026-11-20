@@ -1,9 +1,39 @@
 #include "pxs/RemoteTree.h"
 
 #include <QJsonDocument>
+#include <algorithm>
 #include <cmath>
 
 namespace pxs::oscquery {
+
+namespace {
+// The arguments of a type tag string (the brackets of an array not counted)
+int argumentCount(const QString &type)
+{
+    int n = 0;
+    for (QChar c : type)
+        if (c != '[' && c != ']') ++n;
+    return n;
+}
+
+// VALUE, RANGE, UNIT, EXTENDED_TYPE and CLIPMODE hold one entry per argument; the proposal lets a device write a single value
+// instead of an array when every argument shares it (a null stands for "none" in an array)
+QJsonArray perArgument(const QJsonValue &v, int arguments)
+{
+    if (v.isArray()) return v.toArray();
+    if (v.isUndefined() || v.isNull()) return {};
+    QJsonArray out;
+    for (int k = 0; k < std::max(1, arguments); ++k) out.append(v);
+    return out;
+}
+
+QStringList strings(const QJsonValue &v, int arguments)
+{
+    QStringList out;
+    for (const QJsonValue &e : perArgument(v, arguments)) out << (e.isString() ? e.toString() : QString());
+    return out;
+}
+} // namespace
 
 static bool parse(const QJsonObject &o, const QString &name, RemoteNode *out, int depth)
 {
@@ -17,8 +47,13 @@ static bool parse(const QJsonObject &o, const QString &name, RemoteNode *out, in
     // A leaf with no value is not a parameter: one that is written is a message, one that is read is a signal
     if (!o.contains("CONTENTS") && !o.contains("VALUE") && !out->type.isEmpty())
         out->kind = out->access == 2 ? QStringLiteral("action") : out->access == 1 ? QStringLiteral("signal") : QString();
-    out->range = o.value("RANGE").toArray();
-    out->value = o.value("VALUE").toArray();
+    const int arguments = argumentCount(out->type);
+    out->range = perArgument(o.value("RANGE"), arguments);
+    out->value = perArgument(o.value("VALUE"), arguments);
+    out->extendedType = strings(o.value("EXTENDED_TYPE"), arguments);
+    out->unit = strings(o.value("UNIT"), arguments);
+    for (const QJsonValue &tag : o.value("TAGS").toArray()) out->tags << tag.toString();
+    out->defaultValue = perArgument(o.value("DEFAULT_VALUE"), arguments);
     const QJsonObject contents = o.value("CONTENTS").toObject();
     for (auto it = contents.begin(); it != contents.end(); ++it) {
         if (!it.value().isObject()) continue;
@@ -123,7 +158,10 @@ bool RemoteNode::toParamInfo(ParamInfo *out) const
     } else {
         return false;
     }
-    if (!value.isEmpty()) info.defaultValue = value[0].toVariant();
+    if (!defaultValue.isEmpty()) info.defaultValue = defaultValue[0].toVariant();
+    else if (!value.isEmpty()) info.defaultValue = value[0].toVariant();
+    if (!unit.isEmpty()) info.unit = unit[0];
+    if (!extendedType.isEmpty()) info.extendedType = extendedType[0];
     *out = info;
     return true;
 }

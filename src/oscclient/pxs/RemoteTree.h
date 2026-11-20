@@ -21,6 +21,10 @@ struct RemoteNode {
     int access = 0;      // 0 none (a container), 1 read, 2 write, 3 both
     QJsonArray range;    // one entry per argument: {"MIN","MAX"} or {"VALS"}
     QJsonArray value;    // the last one known, one entry per argument (empty: none known)
+    QStringList extendedType; // EXTENDED_TYPE, one per argument ("" for none): "color.rgb.r", "filepath"…
+    QStringList unit;         // UNIT, one per argument ("" for none): "distance.m"
+    QStringList tags;         // TAGS
+    QJsonArray defaultValue;  // DEFAULT_VALUE (libossia's name): what a reset puts back, one entry per argument
     std::map<QString, RemoteNode> children;
 
     bool isContainer() const { return type.isEmpty() && access == 0; }

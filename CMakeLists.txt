@@ -12,7 +12,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets Network)
 find_package(Qt6 6.4 QUIET COMPONENTS WebSockets)
 
 # OSC 1.0 codec: messages, bundles, address patterns. Qt Core only.
-add_library(pxs_osc STATIC src/osc/OscCodec.cpp src/osc/OscCodec.h)
+add_library(pxs_osc STATIC src/osc/OscCodec.cpp src/osc/OscCodec.h src/osc/WebSocketFrame.h) # the codec of OSC, and the frames of a WebSocket
 add_library(pxs::osc ALIAS pxs_osc)
 target_include_directories(pxs_osc PUBLIC src/osc)
 target_link_libraries(pxs_osc PUBLIC Qt6::Core)
@@ -71,12 +71,11 @@ target_link_libraries(pxs_bind PUBLIC pxs::tree pxs::widgets)
 
 # Controls: the model of a control (kinds, JSON, its place on the page) and the page an application serves for them: a free grid,
 # pages for the groups, Edit mode, SVG widgets, and the server (HTTP and WebSocket) that gives a page its controls. Qt Core and Network.
-add_library(pxs_controls STATIC src/controls/Server.cpp src/controls/ControlList.cpp src/controls/pxs/ControlList.h src/controls/pxs/Server.h src/controls/pxs/Control.h src/controls/pxs/Physics.h src/controls/pxs/ControlsPage.h
-    src/controls/WebSocketFrame.h)
+add_library(pxs_controls STATIC src/controls/Server.cpp src/controls/ControlList.cpp src/controls/pxs/ControlList.h src/controls/pxs/Server.h src/controls/pxs/Control.h src/controls/pxs/Physics.h src/controls/pxs/ControlsPage.h)
 add_library(pxs::controls ALIAS pxs_controls)
 set_target_properties(pxs_controls PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
 target_include_directories(pxs_controls PUBLIC src/controls)
-target_link_libraries(pxs_controls PUBLIC pxs::params Qt6::Core Qt6::Network)
+target_link_libraries(pxs_controls PUBLIC pxs::params pxs::osc Qt6::Core Qt6::Network)
 
 # DMX over the network: the frames of Art-Net and sACN, encoded and decoded. Qt Core only.
 add_library(pxs_dmx STATIC src/dmx/Dmx.cpp src/dmx/pxs/Dmx.h)
@@ -161,6 +160,14 @@ if(PXS_BUILD_TESTS)
     add_executable(pxs_oscquery_test test/oscquery_test.cpp)
     target_link_libraries(pxs_oscquery_test PRIVATE pxs::oscquery)
     add_test(NAME oscquery COMMAND pxs_oscquery_test)
+    add_executable(pxs_oscquery_spec_test test/oscquery_spec_test.cpp)
+    target_link_libraries(pxs_oscquery_spec_test PRIVATE pxs::oscquery)
+    add_test(NAME oscquery_spec COMMAND pxs_oscquery_spec_test)
+    if(Qt6WebSockets_FOUND)
+        add_executable(pxs_websocket_test test/websocket_test.cpp)
+        target_link_libraries(pxs_websocket_test PRIVATE pxs::oscquery Qt6::WebSockets)
+        add_test(NAME websocket COMMAND pxs_websocket_test)
+    endif()
     add_executable(pxs_bind_test test/bind_test.cpp)
     target_link_libraries(pxs_bind_test PRIVATE pxs::bind)
     add_test(NAME bind COMMAND pxs_bind_test)
