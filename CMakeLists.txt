@@ -78,6 +78,32 @@ set_target_properties(pxs_controls PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CO
 target_include_directories(pxs_controls PUBLIC src/controls)
 target_link_libraries(pxs_controls PUBLIC pxs::params Qt6::Core Qt6::Network)
 
+# DMX over the network: the frames of Art-Net and sACN, encoded and decoded. Qt Core only.
+add_library(pxs_dmx STATIC src/dmx/Dmx.cpp src/dmx/pxs/Dmx.h)
+add_library(pxs::dmx ALIAS pxs_dmx)
+target_include_directories(pxs_dmx PUBLIC src/dmx)
+target_link_libraries(pxs_dmx PUBLIC Qt6::Core)
+
+# MIDI: the messages as interaction events (parse, build, learn), the ports and the inputs to listen to. The ports need an RtMidi,
+# which pxs does not carry: an application that has one (it may patch or vendor it) names its target before add_subdirectory,
+#   set(PXS_RTMIDI_TARGET rtmidi)
+# else a system RtMidi (find_package(RtMidi CONFIG)) is used when there is one. Without either, `available()` is false.
+if(NOT PXS_RTMIDI_TARGET)
+    find_package(RtMidi CONFIG QUIET)
+    if(TARGET RtMidi::rtmidi)
+        set(PXS_RTMIDI_TARGET RtMidi::rtmidi)
+    endif()
+endif()
+add_library(pxs_midi STATIC src/midi/Midi.cpp src/midi/MidiMessage.cpp src/midi/pxs/Midi.h)
+add_library(pxs::midi ALIAS pxs_midi)
+set_target_properties(pxs_midi PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pxs_midi PUBLIC src/midi)
+target_link_libraries(pxs_midi PUBLIC pxs::interaction Qt6::Core)
+if(PXS_RTMIDI_TARGET)
+    target_link_libraries(pxs_midi PUBLIC ${PXS_RTMIDI_TARGET})
+    target_compile_definitions(pxs_midi PUBLIC PXS_HAS_RTMIDI)
+endif()
+
 # OSCQuery client: finds the devices of the network (mDNS), reads a device's tree, follows its values (WebSocket LISTEN when Qt WebSockets is
 # there, else polled), writes over OSC, and offers the device to the controls as a ParameterSource.
 add_library(pxs_oscclient STATIC src/oscclient/RemoteTree.cpp src/oscclient/Discovery.cpp src/oscclient/Client.cpp
@@ -102,6 +128,12 @@ if(PXS_BUILD_TESTS)
     add_executable(pxs_control_list_test test/control_list_test.cpp)
     target_link_libraries(pxs_control_list_test PRIVATE pxs::controls)
     add_test(NAME control_list COMMAND pxs_control_list_test)
+    add_executable(pxs_dmx_test test/dmx_test.cpp)
+    target_link_libraries(pxs_dmx_test PRIVATE pxs::dmx)
+    add_test(NAME dmx COMMAND pxs_dmx_test)
+    add_executable(pxs_midi_test test/midi_test.cpp)
+    target_link_libraries(pxs_midi_test PRIVATE pxs::midi)
+    add_test(NAME midi COMMAND pxs_midi_test)
     add_executable(pxs_oscclient_test test/oscclient_test.cpp)
     target_link_libraries(pxs_oscclient_test PRIVATE pxs::oscclient pxs::tree)
     add_test(NAME oscclient COMMAND pxs_oscclient_test)
