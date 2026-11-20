@@ -85,6 +85,7 @@ int main(int argc, char **argv)
     QObject::connect(&client, &Client::failed, [&](const QString &r) { failure = r; });
     client.open("127.0.0.1", service.httpPort());
     pump([&] { return ready || !failure.isEmpty(); });
+    if (!ready) std::fprintf(stderr, "client not ready: failure='%s' state=%d name='%s' oscPort=%d http=%d\n", qPrintable(failure), int(client.state()), qPrintable(client.name()), int(client.oscPort()), int(service.httpPort()));
     CHECK(ready && failure.isEmpty());
     CHECK(client.name() == "Fake" && client.oscPort() == service.oscPort());
     CHECK(client.tree().find("/mix/level") != nullptr);
