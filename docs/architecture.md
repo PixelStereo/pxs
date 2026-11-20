@@ -114,6 +114,10 @@ applications that draw or play, since it needs frames, decoders and libraries th
   `Transmitter` (the sequence, the sACN identity, multicast out of the chosen interface) that lets the monitor recognise the
   application's own frames. It carries no interface: DMXPulse draws the grid, and Cold-Flame can show the same monitor as
   an optional panel.
+- **`pxs::dmxview`** is the grid of a universe and its channel editor, from DMXPulse. It holds no output of its own: the
+  application pushes what to show (`setState`: what the network carries, what the other devices alone send, the output,
+  which channels are set here) and is told what the user chose (`outputChosen`, `releaseRequested`). DMXPulse's main
+  window is made of it; Cold-Flame can open the same widget, fed by a `pxs::dmxnet` Monitor, as an optional panel.
 - **`pxs::midi`** has the messages (an interaction's event, learn, the bytes to send), the ports, and `Inputs`, which
   opens every input while a MIDI interaction exists or the application is learning and looks again for controllers. The
   ports need an RtMidi that `pxs` does not carry: the application names its target (`set(PXS_RTMIDI_TARGET rtmidi)`

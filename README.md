@@ -45,6 +45,7 @@ That is all it takes for any OSCQuery client to find the app, read its tree, lis
 |---|---|
 | `pxs::theme` | colour tokens, the `graphite` and `nyxmap` dark palettes, the shared style sheet |
 | `pxs::widgets` | number fields (drag, type, snap) and the colour picker |
+| `pxs::dmxview` | the **512-channel grid** of a DMX universe with its editor: click a channel (or several) and see the network's level above the level to send, set it by click, drag, wheel or typing |
 
 **Ship**
 
