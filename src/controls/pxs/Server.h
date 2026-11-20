@@ -178,7 +178,6 @@ private:
     bool m_sharedPage = false;
     quint64 m_currentPage = 0;
     std::vector<Control> m_clipboard; // copied or cut tiles (with what a section holds), for every client
-    int m_pastes = 0;                 // pasted since the last copy: each one lands a little further
     void pasteClipboard(quint64 page);
     quint64 m_maxFrame = 4096;
     QHash<QString, Attempts> m_attempts; // by address

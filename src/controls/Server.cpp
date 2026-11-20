@@ -251,8 +251,13 @@ void Server::pasteClipboard(quint64 page)
 {
     if (m_clipboard.empty()) return;
     checkpoint();
-    ++m_pastes;
     QHash<quint64, quint64> made; // the old id -> the new one
+    int below = 0, top = 1 << 20;
+    for (const Control &c : m_clipboard)
+        if (c.gw > 0) top = std::min(top, c.gy);
+    for (const Control &c : m_backend->controls())
+        if (c.gw > 0 && c.group == page && c.kind != Control::Kind::Group) below = std::max(below, c.gy + c.gh);
+    below = top == (1 << 20) ? 0 : std::max(0, below - top);
     std::vector<quint64> added;
     // The sections first, so what they hold has a group to go to
     for (int pass = 0; pass < 2; ++pass)
@@ -261,10 +266,7 @@ void Server::pasteClipboard(quint64 page)
             Control n = c;
             n.id = 0;
             n.group = c.group && made.contains(c.group) ? made.value(c.group) : page;
-            if (n.gw > 0) { // placed: a little further than the original, each paste further still
-                n.gx = std::min(n.gx + m_pastes, std::max(0, Control::kGridColumns - n.gw));
-                n.gy += m_pastes;
-            }
+            if (n.gw > 0) n.gy += below; // placed: the block lands under what the page already holds, as it was laid out
             if (const quint64 id = m_backend->add(n)) {
                 made.insert(c.id, id);
                 added.push_back(id);
@@ -461,7 +463,6 @@ void Server::onFrame(Client &c, int opcode, const QByteArray &payload)
                 if (type == QLatin1String("cut"))
                     for (const Control &c : clip)
                         if (std::find(ids.begin(), ids.end(), c.id) == ids.end()) ids.push_back(c.id); // what a cut section held goes with it
-                m_pastes = 0;
                 if (type == QLatin1String("copy")) return;
             }
             checkpoint(); // cut or remove several: one step of undo
