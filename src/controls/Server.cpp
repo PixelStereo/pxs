@@ -225,7 +225,7 @@ QByteArray Server::controlsMessage(const std::vector<Control> &controls) const
     QJsonArray list;
     for (const Control &c : controls) list.append(c.wireJson());
     const QString title = m_backend->title();
-    return QJsonDocument(QJsonObject{{"t", "controls"}, {"title", title.isEmpty() ? m_name : title}, {"show", hasShowPage()}, {"sizes", m_sizes}, {"list", list}})
+    return QJsonDocument(QJsonObject{{"t", "controls"}, {"title", title.isEmpty() ? m_name : title}, {"show", hasShowPage()}, {"sizes", m_sizes}, {"inspector", m_inspector}, {"list", list}})
         .toJson(QJsonDocument::Compact);
 }
 
@@ -239,6 +239,16 @@ void Server::setDefaultSizes(const QJsonObject &sizes)
     if (clean == m_sizes) return;
     m_sizes = clean;
     for (Client &c : m_clients) c.controlsSeen = ~0ull; // each page is sent the list again, with the sizes
+}
+
+void Server::setPageOptions(const QString &inspector, const QString &physicsWidget)
+{
+    const QString i = inspector == QLatin1String("onDemand") ? inspector : QStringLiteral("always");
+    const QString w = Control::cleanWidget(physicsWidget);
+    if (i == m_inspector && w == m_physicsWidget) return;
+    m_inspector = i;
+    m_physicsWidget = w;
+    for (Client &c : m_clients) c.controlsSeen = ~0ull;
 }
 
 void Server::onData(QTcpSocket *s)
@@ -385,8 +395,9 @@ void Server::onFrame(Client &c, int opcode, const QByteArray &payload)
         }
         if (type == QLatin1String("physicsWidget")) {
             const std::optional<Control> target = m_backend->control(o.value("id").toString().toULongLong());
-            const std::optional<Control> made = target ? forPhysics(*target, o.value("key").toString()) : std::nullopt;
+            std::optional<Control> made = target ? forPhysics(*target, o.value("key").toString()) : std::nullopt;
             if (made) {
+                made->widget = m_physicsWidget;
                 checkpoint();
                 if (m_backend->add(*made)) emit layoutEdited();
             }
