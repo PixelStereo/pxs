@@ -13,6 +13,9 @@ public:
   int value() const { return level; }
   int network() const { return net; }
   int others() const { return external; }
+  // Only the network's bar: a monitor, nothing to send (the output bar and its input are gone)
+  void setOutputVisible(bool visible);
+  bool outputVisible() const { return showOutput; }
   QSize sizeHint() const override { return {280, 64}; }
 public slots:
   void setValue(int next);
@@ -37,7 +40,7 @@ private:
   int levelAt(qreal x) const;
   int level = 0, net = -1, external = -1;
   qreal dragX = 0, dragLevel = 0, wheelRemainder = 0;
-  bool dragging = false;
+  bool dragging = false, showOutput = true;
 };
 
 } // namespace pxs::dmx

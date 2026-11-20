@@ -67,6 +67,8 @@ public:
     void setPorts(quint16 artNet, quint16 sacn) { m_artPort = artNet; m_sacnPort = sacn; }
     // The Transmitter whose frames are the application's own: its CID, or its address and port, mark a stream `own`
     void setTransmitter(const Transmitter *transmitter) { m_transmitter = transmitter; }
+    // An application that sends sACN by itself: its CID marks its streams as its own (an sACN source's identity)
+    void setOwnCid(const QByteArray &cid) { m_ownCid = cid; }
     // The name an own stream goes by in the source list and the log ("DMXPulse output")
     void setOwnLabel(const QString &label) { m_ownLabel = label; }
 
@@ -117,6 +119,7 @@ private:
     quint16 m_artPort = artNetPort, m_sacnPort = sacnPort;
     const Transmitter *m_transmitter = nullptr;
     QString m_ownLabel = QStringLiteral("output");
+    QByteArray m_ownCid;
     Stats m_stats;
     QSet<QUdpSocket *> m_draining;
 };

@@ -23,6 +23,15 @@ LevelControl::LevelControl(QWidget *parent) : QWidget(parent) {
   setToolTip("Click or drag the output bar · Scroll to adjust · Shift for fine "
              "control · Double-click to type");
 }
+void LevelControl::setOutputVisible(bool visible) {
+  if (visible == showOutput)
+    return;
+  showOutput = visible;
+  setFixedHeight(visible ? 2 * rowHeight + rowGap + 8 : rowHeight + 8);
+  setFocusPolicy(visible ? Qt::StrongFocus : Qt::NoFocus);
+  setCursor(visible ? Qt::PointingHandCursor : Qt::ArrowCursor);
+  update();
+}
 void LevelControl::setValue(int next) {
   next = qBound(0, next, 255);
   if (next == level)
@@ -56,7 +65,7 @@ void LevelControl::paintEvent(QPaintEvent *) {
   font.setPixelSize(10);
   font.setLetterSpacing(QFont::AbsoluteSpacing, 1.0);
   const QColor muted("#8d9892");
-  for (int row = 0; row < 2; ++row) {
+  for (int row = 0; row < (showOutput ? 2 : 1); ++row) {
     const bool output = row == 1;
     const int shown = output ? level : net;
     const QRectF bar = track(row);
@@ -91,13 +100,18 @@ void LevelControl::paintEvent(QPaintEvent *) {
                      Qt::AlignVCenter | Qt::AlignRight,
                      shown < 0 ? QString("—") : QString::number(shown));
   }
-  if (hasFocus()) {
+  if (showOutput && hasFocus()) {
     painter.setPen(QPen(QColor("#7b9689"), 1, Qt::DotLine));
     painter.setBrush(Qt::NoBrush);
     painter.drawRoundedRect(track(1).adjusted(-3, -3, 3, 3), 6, 6);
   }
 }
 void LevelControl::mousePressEvent(QMouseEvent *event) {
+  if (!showOutput) {
+    event->ignore();
+    return;
+  }
+
   if (event->button() == Qt::LeftButton) {
     dragging = true;
     dragX = event->position().x();
@@ -112,6 +126,11 @@ void LevelControl::mousePressEvent(QMouseEvent *event) {
     QWidget::mousePressEvent(event);
 }
 void LevelControl::mouseMoveEvent(QMouseEvent *event) {
+  if (!showOutput) {
+    event->ignore();
+    return;
+  }
+
   if (dragging) {
     if (event->modifiers().testFlag(Qt::ShiftModifier)) {
       const qreal perPixel = 255.0 / track(1).width();
@@ -137,6 +156,11 @@ void LevelControl::mouseReleaseEvent(QMouseEvent *event) {
     QWidget::mouseReleaseEvent(event);
 }
 void LevelControl::mouseDoubleClickEvent(QMouseEvent *event) {
+  if (!showOutput) {
+    event->ignore();
+    return;
+  }
+
   if (event->button() == Qt::LeftButton) {
     dragging = false;
     emit editRequested();
@@ -145,6 +169,11 @@ void LevelControl::mouseDoubleClickEvent(QMouseEvent *event) {
     QWidget::mouseDoubleClickEvent(event);
 }
 void LevelControl::wheelEvent(QWheelEvent *event) {
+  if (!showOutput) {
+    event->ignore();
+    return;
+  }
+
   wheelRemainder += event->angleDelta().y() / 120.0;
   int steps = int(wheelRemainder);
   wheelRemainder -= steps;
@@ -153,6 +182,11 @@ void LevelControl::wheelEvent(QWheelEvent *event) {
   event->accept();
 }
 void LevelControl::keyPressEvent(QKeyEvent *event) {
+  if (!showOutput) {
+    event->ignore();
+    return;
+  }
+
   switch (event->key()) {
   case Qt::Key_Up:
   case Qt::Key_Right:

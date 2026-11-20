@@ -45,6 +45,10 @@ public:
     bool activeOnly() const { return m_activeOnly; }
     int activeCount() const { return m_active; } // channels above zero in the last state
 
+    // A monitor: the editor only shows the network's level (no output to set, release or send); on by default
+    void setEditable(bool on);
+    bool editable() const { return m_editable; }
+
     int currentChannel() const;                // 1..512
     void setCurrentChannel(int channel);
     QVector<int> selectedChannels() const;     // 1..512, ascending; the current one when nothing is selected
@@ -76,7 +80,8 @@ private:
     State m_state;
     QVector<int> m_visible; // the channels in the cells, 0-based
     int m_columns = 32;
-    bool m_activeOnly = false, m_updating = false, m_pressedOnlyOpen = false;
+    QWidget *m_tools;
+    bool m_activeOnly = false, m_updating = false, m_pressedOnlyOpen = false, m_editable = true;
     int m_active = 0;
     std::array<int, 512> m_paintedInput{}, m_paintedOutput{};
 };

@@ -133,7 +133,9 @@ ChannelGrid::ChannelGrid(QWidget *parent) : QWidget(parent)
     editorLayout->addLayout(header);
     m_encoder = new LevelControl;
     editorLayout->addWidget(m_encoder);
-    auto tools = new QHBoxLayout;
+    m_tools = new QWidget;
+    auto tools = new QHBoxLayout(m_tools);
+    tools->setContentsMargins(0, 0, 0, 0);
     tools->setSpacing(6);
     m_value = new QSpinBox;
     m_value->setObjectName("outputValue");
@@ -154,7 +156,7 @@ ChannelGrid::ChannelGrid(QWidget *parent) : QWidget(parent)
     m_release->setToolTip("Let this channel follow the received signal again");
     m_release->setStyleSheet("padding:6px 10px;min-width:0");
     tools->addWidget(m_release);
-    editorLayout->addLayout(tools);
+    editorLayout->addWidget(m_tools);
     auto closeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), m_editor);
     closeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(closeShortcut, &QShortcut::activated, this, [this] { closeEditor(); });
@@ -171,7 +173,7 @@ ChannelGrid::ChannelGrid(QWidget *parent) : QWidget(parent)
         if (m_editor->isVisible()) refreshEditor();
     });
     connect(m_value, &QSpinBox::valueChanged, this, [this](int level) {
-        if (m_updating) return;
+        if (m_updating || !m_editable) return; // a monitor sends nothing
         const QVector<int> channels = selectedChannels();
         // Shown at once; the application's state confirms it
         if (m_state.output.size() != 512) m_state.output = QByteArray(512, 0);
@@ -196,6 +198,15 @@ void ChannelGrid::setState(const State &state)
 {
     m_state = state;
     apply();
+}
+
+void ChannelGrid::setEditable(bool on)
+{
+    if (on == m_editable) return;
+    m_editable = on;
+    m_tools->setVisible(on);
+    m_encoder->setOutputVisible(on);
+    refreshEditor();
 }
 
 void ChannelGrid::setActiveOnly(bool on)
@@ -327,11 +338,14 @@ void ChannelGrid::refreshEditor()
         all &= set;
     }
     m_encoder->setNetwork(net, others);
-    m_editorState->setText(several && net < 0 && hasInput ? "Levels differ"
-                           : all                          ? "● Set here"
-                           : any                          ? "● Partly set"
-                           : m_state.following            ? "Follows network"
-                                                          : "Not following");
+    if (!m_editable)
+        m_editorState->setText(several && net < 0 && hasInput ? "Levels differ" : QString());
+    else
+        m_editorState->setText(several && net < 0 && hasInput ? "Levels differ"
+                               : all                          ? "● Set here"
+                               : any                          ? "● Partly set"
+                               : m_state.following            ? "Follows network"
+                                                              : "Not following");
     m_release->setEnabled(any);
     placeEditor();
 }
