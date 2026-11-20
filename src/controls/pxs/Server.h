@@ -19,7 +19,7 @@
 //   client -> {"t":"reset","id":".."}   the control's reset button
 //   client -> {"t":"undo"} / {"t":"redo"}   the page's last change, back and forth (Backend::restore)
 //   client -> {"t":"rel","id":"..."}   the hand let go of a control: its physics (Control::physics) takes over
-//   client -> {"t":"drop","data":"<text>","page":"<id>","x":..,"y":..}   something dragged onto the page from outside (the application's own message: `message()`)
+//   client -> {"t":"drop","data":"<text>","onto":"<id>","page":"<id>","x":..,"y":..}   something dragged onto the page from outside (onto: the macro it fell on) (the application's own message: `message()`)
 //   client -> {"t":"layout","items":{"<id>":{"x","y","w","h"}}}   {"t":"edit","id":..,"props":{…}} (Control::applyProps)   {"t":"remove","id":..}
 //   client -> {"t":"remove","ids":["..",".."]}   several at once (one step of undo)
 //   client -> {"t":"copy","ids":[..]} / {"t":"cut","ids":[..]} / {"t":"paste","page":"<id>"}   the clipboard is the server's, for every client

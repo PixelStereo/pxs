@@ -544,6 +544,38 @@ bool setBound(const Control &c, ParameterSource &source, double value)
     return ok;
 }
 
+bool setTargets(const Control &c, ParameterSource &source, double value, int axis, bool onRelease)
+{
+    if (!std::isfinite(value)) return false;
+    const double span = c.max - c.min;
+    const double n = std::clamp(span > 0 ? (value - c.min) / span : value, 0.0, 1.0);
+    if (c.kind == Kind::Button && n < 0.5 && !onRelease) return false;
+    bool any = false;
+    for (const Target &t : c.targets) {
+        if (t.axis != axis) continue;
+        ParamInfo info;
+        if (!source.info(t.scope, t.path, &info) || !(info.access & ParamInfo::Write)) continue;
+        const double shaped = std::pow(n, t.curve > 0 ? t.curve : 1.0);
+        const double out = t.outMin + shaped * (t.outMax - t.outMin);
+        bool ok = false;
+        switch (info.type) {
+        case ParamInfo::Type::Float:
+        case ParamInfo::Type::Int: ok = source.setNumber(t.scope, t.path, out); break;
+        case ParamInfo::Type::Bool: ok = source.setJson(t.scope, t.path, out >= 0.5); break;
+        case ParamInfo::Type::Choice: {
+            const int k = std::clamp(int(std::lround(out)), 0, int(info.choices.size()) - 1);
+            ok = !info.choices.isEmpty() && source.setJson(t.scope, t.path, info.choices[k]);
+            break;
+        }
+        case ParamInfo::Type::Trigger: ok = out >= 0.5 && n >= 0.5 && source.setJson(t.scope, t.path, true); break; // sent when pressed
+        default: break;
+        }
+        if (ok) source.touched(t.scope, t.path);
+        any |= ok;
+    }
+    return any;
+}
+
 bool setBoundColor(const Control &c, ParameterSource &source, double r, double g, double b)
 {
     const double v[3] = {r, g, b};
