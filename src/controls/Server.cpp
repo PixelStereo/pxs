@@ -225,7 +225,7 @@ QByteArray Server::controlsMessage(const std::vector<Control> &controls) const
     QJsonArray list;
     for (const Control &c : controls) list.append(c.wireJson());
     const QString title = m_backend->title();
-    return QJsonDocument(QJsonObject{{"t", "controls"}, {"title", title.isEmpty() ? m_name : title}, {"show", hasShowPage()}, {"sizes", m_sizes}, {"inspector", m_inspector}, {"list", list}})
+    return QJsonDocument(QJsonObject{{"t", "controls"}, {"title", title.isEmpty() ? m_name : title}, {"show", hasShowPage()}, {"sizes", m_sizes}, {"inspector", m_inspector}, {"nameParts", m_nameParts}, {"list", list}})
         .toJson(QJsonDocument::Compact);
 }
 
@@ -239,6 +239,14 @@ void Server::setDefaultSizes(const QJsonObject &sizes)
     if (clean == m_sizes) return;
     m_sizes = clean;
     for (Client &c : m_clients) c.controlsSeen = ~0ull; // each page is sent the list again, with the sizes
+}
+
+void Server::setNameParts(int parts)
+{
+    parts = std::clamp(parts, 1, 4);
+    if (parts == m_nameParts) return;
+    m_nameParts = parts;
+    for (Client &c : m_clients) c.controlsSeen = ~0ull;
 }
 
 void Server::setPageOptions(const QString &inspector, const QString &physicsWidget)
