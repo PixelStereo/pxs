@@ -122,6 +122,21 @@ int main(int argc, char **argv)
         CHECK(own == 1);
     }
 
+    // An application with its own sACN sender names its CID: its streams are its own (and Art-Net ones, which it cannot tell, are not)
+    {
+        Monitor m;
+        m.setOwnCid(cidA);
+        m.setOwnLabel("Console output");
+        m.ingest(sacn(3, 100, cidA, 1, levels({{1, 70}})), a, 5568, true);
+        m.ingest(sacn(3, 100, cidB, 1, levels({{1, 20}})), b, 5568, true);
+        m.ingest(artnet(3, 1, levels({{1, 10}})), a, 6454, false);
+        CHECK(at(m.merged(true, 3, MergeMode::HTP, true), 1) == 20);
+        int own = 0;
+        for (const Stream &s : m.streams())
+            if (s.own) { ++own; CHECK(s.frame.name == "Console output"); }
+        CHECK(own == 1);
+    }
+
     // The number of sources is bounded
     {
         Monitor m;

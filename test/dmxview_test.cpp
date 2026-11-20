@@ -200,12 +200,41 @@ static void channelGrid()
     CHECK(!view.editorOpen());
 }
 
+static void monitorMode()
+{
+    ChannelGrid view;
+    view.resize(1100, 600);
+    view.show();
+    view.setEditable(false);
+    CHECK(!view.editable());
+    auto *grid = view.findChild<QTableWidget *>("channelGrid");
+    auto *encoder = view.findChild<LevelControl *>("outputEncoder");
+    auto *value = view.findChild<QSpinBox *>("outputValue");
+    auto *release = view.findChild<QPushButton *>("releaseChannel");
+    ChannelGrid::State state = stateWith({{5, 96}});
+    view.setState(state);
+    int chosen = 0;
+    QObject::connect(&view, &ChannelGrid::outputChosen, [&](const QVector<int> &, int) { ++chosen; });
+    QTest::mouseClick(grid->viewport(), Qt::LeftButton, Qt::NoModifier, grid->visualRect(grid->model()->index(0, 4)).center());
+    QCoreApplication::processEvents();
+    // The editor opens on the network's level only: nothing to set, release or send
+    CHECK(view.editorOpen() && encoder->network() == 96 && !encoder->outputVisible());
+    CHECK(!value->isVisibleTo(&view) && !release->isVisibleTo(&view));
+    encoder->setValue(200); // even if told, a monitor sends nothing
+    key(encoder, Qt::Key_Up);
+    CHECK(chosen == 0);
+    // Back to an editor
+    view.setEditable(true);
+    CHECK(encoder->outputVisible() && value->isVisibleTo(&view) && release->isVisibleTo(&view));
+}
+
 int main(int argc, char **argv)
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
     levelControl();
     channelGrid();
+    monitorMode();
     if (failures) return 1;
     std::printf("dmxview passed\n");
     return 0;

@@ -225,6 +225,7 @@ bool Monitor::ingest(const QByteArray &data, const QHostAddress &from, quint16 p
         s.own = isSacn ? f.cid == m_transmitter->cid()
                        : port == m_transmitter->localPort() && m_transmitter->localPort() != 0 && from == m_transmitter->localAddress();
     }
+    if (!s.own && isSacn && !m_ownCid.isEmpty() && f.cid == m_ownCid) s.own = true;
     if (s.own) s.frame.name = m_ownLabel;
     emit logged(QStringLiteral("RX · %1 · U%2 · %3%4 · seq %5%6 · %7")
                    .arg(isSacn ? "sACN" : "Art-Net")
