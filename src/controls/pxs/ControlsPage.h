@@ -26,6 +26,7 @@ header h1 { flex:1; margin:0 10px 0 0; font-size:16px; font-weight:600; white-sp
 #tabs { display:flex; overflow-x:auto; padding:8px 14px 0; border-bottom:1px solid var(--line); -webkit-overflow-scrolling:touch; }
 #tabs button { font:inherit; font-size:14px; color:var(--dim); background:none; border:0; border-bottom:3px solid transparent; padding:8px 14px; white-space:nowrap; }
 #tabs button.on { color:var(--text); border-bottom-color:var(--acc); }
+#tabs .tbin { margin-left:8px; font-size:12px; opacity:.55; } #tabs .tbin:hover { opacity:1; color:#f08a82; }
 #grid { position:relative; margin:10px; }
 #wires { position:absolute; left:0; top:0; width:100%; height:100%; overflow:visible; pointer-events:none; z-index:5; }
 .wire { stroke:var(--acc); stroke-width:1.5; stroke-dasharray:4 3; opacity:.8; }
@@ -119,7 +120,8 @@ inline constexpr char kStyleB[] = R"CSS(
 .rz::after { content:""; position:absolute; right:8px; bottom:8px; width:12px; height:12px; border-right:3px solid var(--acc); border-bottom:3px solid var(--acc); border-radius:0 0 4px 0; }
 .gear { position:absolute; right:10px; top:8px; z-index:4; width:30px; height:30px; border-radius:15px; border:1px solid var(--line); background:var(--panel2); color:var(--text); font-size:15px; line-height:1; }
 .gear.bin { border-color:#6b2b27; color:#f08a82; }
-@media (min-width:760px) { body.insp { padding-right:min(360px,100%); } #sheet.pinned { box-shadow:none; } }
+/* The tiles keep the width they have in play: the inspector lies over the right edge, and the page scrolls sideways to what it covers */
+@media (min-width:760px) { body.insp { position:relative; overflow-x:auto; } body.insp::after { content:''; position:absolute; top:0; left:calc(100% + min(360px,100%)); width:1px; height:1px; } }
 .marq { position:absolute; z-index:6; border:1px solid var(--acc); background:rgba(41,199,224,.12); pointer-events:none; }
 .tile.sel { outline-offset:0; }
 #grid.compact .tile { position:relative; transition:none; }
@@ -550,7 +552,14 @@ inline constexpr char kScriptC[] = R"JS(
     $('#login').hidden = true; grid.hidden = false;
     if (!list.some(p => p.id === pageId)) pageId = list.length ? list[0].id : -1;
     const tabs = $('#tabs'); tabs.textContent = ''; tabs.hidden = list.length < 2;
-    list.forEach(p => { const b = el('button', p.id === pageId ? 'on' : '', p.name); b.onclick = () => { pageId = p.id; if (sharedPage) send({ t: 'showPage', id: String(p.id) }); render(); }; tabs.appendChild(b); });
+    list.forEach(p => {
+      const b = el('button', p.id === pageId ? 'on' : '', p.name); b.onclick = () => { pageId = p.id; if (sharedPage) send({ t: 'showPage', id: String(p.id) }); render(); }; tabs.appendChild(b);
+      if (editing) { // a bin beside the name: the page and what is on it go at once (the undo brings them back)
+        const x = el('span', 'tbin', '🗑'); x.title = 'Delete this page';
+        x.onclick = e => { e.stopPropagation(); const ids = pageItems(p.id).map(c => c.id); if (p.id) ids.push(p.id); if (ids.length) { send({ t: 'remove', ids }); sel = new Set(); sheetId = 0; } };
+        b.appendChild(x);
+      }
+    });
     grid.textContent = ''; Object.keys(tiles).forEach(k => delete tiles[k]);
     grid.classList.toggle('edit', editing);
     document.body.classList.toggle('insp', editing && inspectorMode === 'always');
@@ -574,6 +583,7 @@ inline constexpr char kScriptC[] = R"JS(
     if (!(e.metaKey || e.ctrlKey) || e.altKey || t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
     if (k === 'z' || k === 'y') { e.preventDefault(); send({ t: (k === 'y' || e.shiftKey) ? 'redo' : 'undo' }); }
   });
+  document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K') && window.parent !== window) { e.preventDefault(); try { parent.document.dispatchEvent(new parent.KeyboardEvent('keydown', { key: 'k', metaKey: e.metaKey, ctrlKey: e.ctrlKey, bubbles: true })); } catch (_) {} } }); // Cmd/Ctrl+K belongs to the page that frames this one
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E') && $('#edit').style.display !== 'none' && !$('#edit').hidden) { e.preventDefault(); $('#edit').click(); } }); // Cmd/Ctrl+E
   // Something dragged onto the page from outside (an address from a tree beside it): the application is told where
   window.pxsPageId = () => pageId; // the page shown now (an application's front page puts what it adds there)
