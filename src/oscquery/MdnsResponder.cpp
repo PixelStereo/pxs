@@ -26,15 +26,27 @@ void put32(QByteArray &b, quint32 v)
     put16(b, quint16(v & 0xffff));
 }
 
-// name, type, class, ttl, then the data with its length
-void putRecord(QByteArray &b, const QString &name, quint16 type, quint16 cls, quint32 ttl, const QByteArray &data)
+// A name already in its wire form, then type, class, ttl, and the data with its length
+void putRecordRaw(QByteArray &b, const QByteArray &name, quint16 type, quint16 cls, quint32 ttl, const QByteArray &data)
 {
-    b += MdnsResponder::encodeName(name);
+    b += name;
     put16(b, type);
     put16(b, cls);
     put32(b, ttl);
     put16(b, quint16(data.size()));
     b += data;
+}
+
+void putRecord(QByteArray &b, const QString &name, quint16 type, quint16 cls, quint32 ttl, const QByteArray &data)
+{
+    putRecordRaw(b, MdnsResponder::encodeName(name), type, cls, ttl, data);
+}
+
+// The instance name is one label whatever it holds (a dot, a version "1.2"): it is not split like a domain name
+QByteArray instanceLabel(const QString &instance)
+{
+    const QByteArray utf8 = instance.toUtf8().left(63);
+    return QByteArray(1, char(utf8.size())) + utf8;
 }
 
 QString hostLabel()
@@ -43,7 +55,7 @@ QString hostLabel()
     if (h.endsWith(QLatin1String(".local"))) h.chop(6);
     h.remove(QRegularExpression(QStringLiteral("[^a-z0-9-]")));
     if (h.isEmpty()) h = QStringLiteral("host");
-    return QStringLiteral("atemremoteosc-") + h.left(40);
+    return QStringLiteral("pxs-") + h.left(40); // not the operating system's own name: that one is answered by it
 }
 
 } // namespace
@@ -80,9 +92,9 @@ QByteArray MdnsResponder::buildResponse(const QString &instance, const QString &
 
     for (const Service &s : services) {
         const QString type = s.type + QStringLiteral(".local");
-        const QString full = instance + QLatin1Char('.') + type;
+        const QByteArray full = instanceLabel(instance) + encodeName(type);
 
-        putRecord(records, type, TypePTR, ClassIN, ttl, encodeName(full)); // service type -> instance
+        putRecord(records, type, TypePTR, ClassIN, ttl, full); // service type -> instance
         ++count;
 
         QByteArray srv;
@@ -90,10 +102,10 @@ QByteArray MdnsResponder::buildResponse(const QString &instance, const QString &
         put16(srv, 0); // weight
         put16(srv, s.port);
         srv += encodeName(hostName);
-        putRecord(records, full, TypeSRV, ClassIN | CacheFlush, ttl, srv);
+        putRecordRaw(records, full, TypeSRV, ClassIN | CacheFlush, ttl, srv);
         ++count;
 
-        putRecord(records, full, TypeTXT, ClassIN | CacheFlush, ttl, QByteArray(1, '\0')); // empty TXT
+        putRecordRaw(records, full, TypeTXT, ClassIN | CacheFlush, ttl, QByteArray(1, '\0')); // empty TXT
         ++count;
     }
     for (const QHostAddress &a : addresses) {

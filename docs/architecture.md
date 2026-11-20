@@ -69,7 +69,7 @@ Your four ideas are in fact things NyxMap already has. The work is an **extracti
 | 2 | MIDI input (`Midi.h`, RtMidi) and MIDI learn | to do |
 | 3 | the Interaction panel and the parameter panel, made generic over the tree | to do |
 | 4 | presets (snapshots) by address | **done**: `pxs::Preset` (`capture`, `recall`), see below; NyxMap adopts it in step 6 |
-| 5 | the server's `LISTEN` WebSocket | to do |
+| 5 | the server's `LISTEN` WebSocket | **done in `OscService`** (`LISTEN`/`IGNORE`, binary OSC, `PATH_CHANGED`, `PATH_ADDED`, `PATH_REMOVED`); NyxMap keeps its own until step 6 |
 | 6 | NyxMap uses the `pxs` versions and removes its copies | to do, last |
 
 MpOsc's per-signal filter (inversion, attack, release) becomes a `pxs` interaction (step 3 for its interface).

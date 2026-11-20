@@ -202,6 +202,31 @@ int main(int argc, char **argv)
         nb.set = [&](const QVariantList &x) { b = x.value(0).toDouble(); return true; };
         r.addObserver([&](const pxs::Node &n, const QVariantList &) { (n.path() == "/a" ? heardA : heardB) += 1; });
         CHECK(r.apply({"/a", "f", {1.0}}) == 1 && b == 1.0 && heardA == 1 && heardB == 1);
+        // What a client may be told besides: units, what an argument is, tags, the default. A color or a point component says what it is
+        pxs::Tree u;
+        double d = 2.0, red = 0, px = 0;
+        auto length = make("/len", Parameter::Type::Float);
+        length->range(0, 10).unit("distance.m").byDefault(2.0).bind([&] { return QVariant(d); }, [&](const QVariant &x) { d = x.toDouble(); });
+        u.add("/len", std::move(length)).tags = QStringList{"geometry", "size"};
+        auto channel = make("/col/r", Parameter::Type::Float);
+        channel->range(0, 1).colorComponent(0).bind([&] { return QVariant(red); }, [&](const QVariant &x) { red = x.toDouble(); });
+        u.add("/col/r", std::move(channel));
+        auto point = make("/pos/y", Parameter::Type::Float);
+        point->range(0, 1).pointComponent(1).bind([&] { return QVariant(px); }, [&](const QVariant &x) { px = x.toDouble(); });
+        u.add("/pos/y", std::move(point));
+        const QJsonObject len = u.json("/len");
+        CHECK(len["UNIT"].toArray() == QJsonArray{"distance.m"} && len["DEFAULT_VALUE"].toArray() == QJsonArray{2.0} && len["TAGS"].toArray() == QJsonArray({"geometry", "size"}));
+        CHECK(!len.contains("EXTENDED_TYPE"));
+        CHECK(u.json("/col/r")["EXTENDED_TYPE"].toArray() == QJsonArray{"color.rgb.r"} && u.json("/pos/y")["EXTENDED_TYPE"].toArray() == QJsonArray{"position.cartesian.y"});
+        pxs::Node &xyz = u.add("/xyz");
+        xyz.type = "fff";
+        xyz.access = 3;
+        xyz.extendedType = QStringList{"position.cartesian.x", "position.cartesian.y"}; // the third is not said: null
+        xyz.unit = QStringList{"distance.m", "", "distance.m"};
+        xyz.get = [] { return QVariantList{1.0, 2.0, 3.0}; };
+        CHECK(u.json("/xyz")["EXTENDED_TYPE"].toArray() == QJsonArray({"position.cartesian.x", "position.cartesian.y", QJsonValue()}));
+        CHECK(u.json("/xyz")["UNIT"].toArray() == QJsonArray({"distance.m", QJsonValue(), "distance.m"}));
+        for (const char *key : {"TAGS", "EXTENDED_TYPE", "UNIT", "DEFAULT_VALUE"}) CHECK(pxs::Tree::defaultExtensions().value(key) == true);
     }
     CHECK(tree.remove("/layer/2") && !tree.find("/layer/2/opacity"));
     return failures ? 1 : 0;
