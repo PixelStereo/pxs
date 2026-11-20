@@ -10,6 +10,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets Network)
 find_package(Qt6 6.4 QUIET COMPONENTS WebSockets)
+if(PXS_BUILD_TESTS)
+    find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
+endif()
 
 # OSC 1.0 codec: messages, bundles, address patterns. Qt Core only.
 add_library(pxs_osc STATIC src/osc/OscCodec.cpp src/osc/OscCodec.h src/osc/WebSocketFrame.h) # the codec of OSC, and the frames of a WebSocket
@@ -89,6 +92,13 @@ add_library(pxs::dmxnet ALIAS pxs_dmxnet)
 set_target_properties(pxs_dmxnet PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(pxs_dmxnet PUBLIC pxs::dmx Qt6::Network)
 
+# DMX on screen: the grid of 512 channels with its editor (the network's level above the level to send). From DMXPulse. Qt Widgets.
+add_library(pxs_dmxview STATIC src/dmxview/ChannelGrid.cpp src/dmxview/LevelControl.cpp src/dmxview/pxs/ChannelGrid.h src/dmxview/pxs/LevelControl.h)
+add_library(pxs::dmxview ALIAS pxs_dmxview)
+set_target_properties(pxs_dmxview PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pxs_dmxview PUBLIC src/dmxview)
+target_link_libraries(pxs_dmxview PUBLIC Qt6::Widgets)
+
 # MIDI: the messages as interaction events (parse, build, learn), the ports and the inputs to listen to. The ports need an RtMidi,
 # which pxs does not carry: an application that has one (it may patch or vendor it) names its target before add_subdirectory,
 #   set(PXS_RTMIDI_TARGET rtmidi)
@@ -139,6 +149,9 @@ if(PXS_BUILD_TESTS)
     add_executable(pxs_dmxnet_test test/dmxnet_test.cpp)
     target_link_libraries(pxs_dmxnet_test PRIVATE pxs::dmxnet)
     add_test(NAME dmxnet COMMAND pxs_dmxnet_test)
+    add_executable(pxs_dmxview_test test/dmxview_test.cpp)
+    target_link_libraries(pxs_dmxview_test PRIVATE pxs::dmxview Qt6::Test)
+    add_test(NAME dmxview COMMAND pxs_dmxview_test)
     add_executable(pxs_midi_test test/midi_test.cpp)
     target_link_libraries(pxs_midi_test PRIVATE pxs::midi)
     add_test(NAME midi COMMAND pxs_midi_test)
