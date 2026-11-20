@@ -452,15 +452,9 @@ inline constexpr char kScriptC[] = R"JS(
     return out;
   }
   const pageItems = id => controls.filter(c => c.id !== id && (id === 0 ? !c.group && c.kind !== 'group' : topOf(c) === id));
-  const resized = {}; // a tile whose widget was just changed: the size of the new widget, until the application says it has it
   function layoutOf(list) { // [{c, x, y, w, h}]: where each is saved, the rest flowed into the first free place
     const placed = [], rest = [];
-    list.forEach(c => {
-      const f = resized[c.id];
-      if (f && c.layout && c.layout.w === f.w && c.layout.h === f.h) delete resized[c.id];
-      if (c.layout) placed.push(f && resized[c.id] ? { c, x: Math.min(c.layout.x, 12 - f.w), y: c.layout.y, w: f.w, h: f.h } : { c, x: c.layout.x, y: c.layout.y, w: c.layout.w, h: c.layout.h });
-      else rest.push(c);
-    });
+    list.forEach(c => (c.layout ? placed.push({ c, x: c.layout.x, y: c.layout.y, w: c.layout.w, h: c.layout.h }) : rest.push(c)));
     rest.forEach(c => { const s = sizeOf(c); let found = false; for (let y = 0; !found; y++) for (let x = 0; x <= 12 - s[0] && !found; x++) if (!placed.some(p => hit(p, { x, y, w: s[0], h: s[1] }))) { placed.push({ c, x, y, w: s[0], h: s[1] }); found = true; } });
     return placed;
   }
@@ -682,12 +676,7 @@ inline constexpr char kScriptD[] = R"JS(
       const ws = wChoices[c.kind] || [];
       if (ws.length > 1) {
         const s = el('select'); ws.forEach(w => { const o = el('option', '', wName[w]); o.value = w; s.appendChild(o); }); s.value = widgetOf(c);
-        s.onchange = () => { // the tile takes the size of its new widget, where it is
-          const it = items.find(i => i.c.id === c.id), size = sizeOf(Object.assign({}, c, { widget: s.value }));
-          send({ t: 'edit', id: c.id, props: { widget: s.value } });
-          resized[c.id] = { w: size[0], h: size[1] }; setTimeout(() => { delete resized[c.id]; }, 2500);
-          if (it) { it.w = size[0]; it.h = size[1]; it.x = Math.min(it.x, 12 - it.w); resolve(items, it); saveLayout(); }
-        };
+        s.onchange = () => send({ t: 'edit', id: c.id, props: { widget: s.value } }); // the tile keeps the place and the size it has been given
         field('Widget', s);
       }
       const sw = el('div', 'sw8'); accents.forEach(a => { const b = el('button', (c.accent || '') === a ? 'on' : '', ''); b.style.background = a || '#34343b'; b.title = a || 'default'; b.onclick = () => { push({ accent: a }); sw.querySelectorAll('button').forEach(o => o.classList.remove('on')); b.classList.add('on'); }; sw.appendChild(b); });
