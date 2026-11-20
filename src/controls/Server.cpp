@@ -75,6 +75,10 @@ QByteArray Server::page(const QString &title)
 
 Server::Server(Backend *backend, QObject *parent) : QObject(parent), m_backend(backend)
 {
+    // The timers are children of the server, so that they move with it to another thread (a member without a parent stays where it
+    // was made, and starting it from the server's thread is refused: "Timers cannot be started from another thread")
+    m_timer.setParent(this);
+    m_physics.setParent(this);
     m_timer.setInterval(50);
     connect(&m_timer, &QTimer::timeout, this, &Server::push);
     m_physics.setInterval(16);
