@@ -101,6 +101,19 @@ without error (`RecallResult`).
 **Rewinding is called `rewind`, everywhere**: the action leaf of a media, a shader, a slideshow, a timecode.
 "Restart" does not exist: it is `play = true` then `rewind`, which a preset holds with both.
 
+## Protocols: what is in `pxs`, what is not
+
+`pxs` carries what **controls and exposes parameters**: OSC and OSCQuery, MIDI, DMX. Each is a module an application links
+only when it needs it. It does not carry what **transports media** (OMT, NDI, capture): that stays in the code of the
+applications that draw or play, since it needs frames, decoders and libraries the other applications must not pay for.
+
+- **`pxs::dmx`** is the codec alone (Art-Net, sACN): frames in, frames out, strictly checked. Sockets, the merging of
+  sources (HTP, LTP, sACN priority) and what a channel drives are the application's.
+- **`pxs::midi`** has the messages (an interaction's event, learn, the bytes to send), the ports, and `Inputs`, which
+  opens every input while a MIDI interaction exists or the application is learning and looks again for controllers. The
+  ports need an RtMidi that `pxs` does not carry: the application names its target (`set(PXS_RTMIDI_TARGET rtmidi)`
+  before `add_subdirectory`, as NyxMap patches its own), or a system RtMidi is found. A MIDI controller is a **signal**.
+
 ## Other ideas, not yet decided
 
 1. **An "internal" flag** on a node, so that what only serves the interface is not exposed to the outside.

@@ -8,6 +8,8 @@ Cold-Flame, MpOsc). Licensed under the GNU Affero General Public License v3.0 (s
 | `src/osc` | `pxs::osc`: OSC 1.0 codec (messages, bundles, address patterns), Qt Core only |
 | `src/params` | `pxs::params`: how a parameter is declared (`Parameter`, `ParamInfo`) and how the others are told it changed (`ChangeFeed`); see `docs/parameters.md` |
 | `src/tree` | `pxs::tree`: the address space, a tree of nodes carrying parameters, OSC messages applied to it, the OSCQuery description derived from it (inspired by Ossia); see `docs/oscquery.md` |
+| `src/dmx` | `pxs::dmx`: the frames of Art-Net and sACN, encoded and decoded and checked in full, Qt Core only; the sockets and what a channel drives stay in the application |
+| `src/midi` | `pxs::midi`: MIDI messages as interaction events (parse, build, learn), the ports and the inputs to listen to while a MIDI interaction needs them; the ports need an RtMidi the application names (`PXS_RTMIDI_TARGET`) or a system one, else `available()` is false |
 | `src/theme` | `pxs::theme`: colour tokens, the `graphite` and `nyxmap` dark palettes, the shared style sheet (sections, toggles, captions, tabs), `pxs::apply()` (also sets Fusion, the check boxes and radio buttons); `#include <pxs/Theme.h>` |
 | `src/widgets` | `pxs::widgets`: the number fields (`SliderField`, `RangeField`, `NumberBox`, `IntBox`, from NyxMap) and `ColorPicker` (RGB, HSV, HSL, wheel, palette), Qt Widgets only |
 | `cmake/PixelStereoBuildId.cmake` | the application's version in its name: `0.2.1`, `0.2.1+3`, `0.2.1+3+` |
