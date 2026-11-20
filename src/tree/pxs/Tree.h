@@ -54,6 +54,11 @@ public:
     bool locked = false; // refuses every write (OSC, a mapping, the panel) until unlocked; the application's own code is not stopped
     std::function<bool()> reset; // puts the default back (a parameter with a default; empty: nothing to reset)
     QJsonArray range;    // one entry per argument: {"MIN", "MAX"} or {"VALS"}
+    // What a client may be told besides: one entry per argument (a string for each, "" for none), and the node's tags
+    QStringList extendedType; // EXTENDED_TYPE: what each argument is ("color.rgb.r")
+    QStringList unit;         // UNIT: what each argument measures ("distance.m")
+    QStringList tags;         // TAGS: for a client to search and filter by
+    std::function<QVariantList()> defaultValue; // DEFAULT_VALUE (libossia's name), what a reset puts back; empty: none
     QString clip;        // "both" when the range is enforced (CLIPMODE)
     std::function<QVariantList()> get;                 // the value, one entry per argument
     std::function<bool(const QVariantList &)> set;     // false: refused (a locked layer, a value that does not fit)
@@ -106,6 +111,10 @@ public:
     // Where everything the application says goes (the OSC output, the listeners): a signal emitted, a parameter that
     // changed. Set by whoever sends (the OSC/OSCQuery service); one at a time.
     void setOutput(std::function<void(const osc::Message &)> output) { m_output = std::move(output); }
+    // Told when the structure changes: a node was made (the path of the highest one made), a node was removed (its own path), the
+    // tree was cleared ("/"). One at a time, set by whoever tells the clients (OSCQuery's PATH_ADDED, PATH_REMOVED).
+    enum class Change { Added, Removed, Cleared };
+    void setStructureObserver(std::function<void(const QString &, Change)> observer) { m_structure = std::move(observer); }
     // Who else wants to know, inside the application (a panel that shows the values, the mappings): called when a parameter
     // was written (OSC, a mapping, the panel) or told changed, a signal was fired, a node was locked. Returns an id for
     // removeObserver(). Called on the thread that wrote.
@@ -145,6 +154,7 @@ private:
     Node m_root;
     QStringList m_pendingLocks;
     std::function<void(const osc::Message &)> m_output;
+    std::function<void(const QString &, Change)> m_structure;
     // Copy on write: a fired signal (thousands a second) takes one reference, not a copy of the list
     std::shared_ptr<const std::vector<std::pair<int, Observer>>> m_observers;
     int m_nextObserver = 1;

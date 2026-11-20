@@ -7,6 +7,7 @@
 #include <pxs/RemoteSource.h>
 
 #include <QCoreApplication>
+#include <QJsonDocument>
 #include <QElapsedTimer>
 #ifdef PXS_HAS_WEBSOCKETS
 #include <QWebSocket>
@@ -55,6 +56,17 @@ int main(int argc, char **argv)
         const QJsonObject doc{{"FULL_PATH", "/"}, {"CONTENTS", QJsonObject{{"a", QJsonObject{{"FULL_PATH", "/a"}, {"TYPE", "f"}, {"ACCESS", 3}, {"NYXMAP_RESET", "/a/reset"},
                                        {"CONTENTS", QJsonObject{{"reset", QJsonObject{{"FULL_PATH", "/a/reset"}, {"TYPE", "N"}, {"ACCESS", 2}}}}}}}}}};
         CHECK(withReset.load(doc) && withReset.find("/a") && withReset.find("/a")->resetPath == "/a/reset" && withReset.find("/a/reset"));
+    }
+    { // what the proposal lets a device write: one value for every argument, a null for "none", units and what an argument is
+        pxs::oscquery::RemoteTree shorthand;
+        const QJsonObject doc{{"FULL_PATH", "/"}, {"CONTENTS", QJsonObject{{"p", QJsonObject{{"FULL_PATH", "/p"}, {"TYPE", "ff"}, {"ACCESS", 3},
+                              {"RANGE", QJsonObject{{"MIN", 0}, {"MAX", 1}}}, {"UNIT", "distance.m"}, {"VALUE", QJsonArray{0.5, 0.25}},
+                              {"EXTENDED_TYPE", QJsonArray{"position.cartesian.x", QJsonValue()}}, {"TAGS", QJsonArray{"a"}},
+                              {"DEFAULT_VALUE", QJsonArray{0.5, 0.5}}}}}}};
+        CHECK(shorthand.load(doc));
+        const RemoteNode *p = shorthand.find("/p");
+        CHECK(p && p->range.size() == 2 && p->range.at(1).toObject().value("MAX").toInt() == 1 && p->unit == QStringList({"distance.m", "distance.m"}));
+        CHECK(p->extendedType == QStringList({"position.cartesian.x", ""}) && p->tags == QStringList{"a"} && p->defaultValue.size() == 2);
     }
     const RemoteNode *level_ = remote.find("/mix/level");
     CHECK(level_ && level_->type == "f" && level_->access == 3 && level_->value.at(0).toDouble() == 0.25);
@@ -108,6 +120,18 @@ int main(int argc, char **argv)
     client.refresh();
     pump([&] { return changes > 0; });
     CHECK(changes == 1 && client.tree().find("/mix/extra"));
+    // This device says LISTEN (OscService serves the WebSocket): what it changes is pushed, and a node it makes is told with PATH_CHANGED
+    CHECK(client.pushes());
+    level = 2.5;
+    heard = QJsonArray();
+    tree.changed("/mix/level");
+    pump([&] { return !heard.isEmpty(); });
+    CHECK(!heard.isEmpty() && heard.at(0).toDouble() == 2.5);
+    auto extra2 = std::make_unique<Parameter>("extra2", "Extra 2", Parameter::Type::Float);
+    extra2->range(0, 1).bind([] { return QVariant(0.0); }, [](const QVariant &) {});
+    tree.add("/mix/extra2", std::move(extra2));
+    pump([&] { return changes > 1; }, 1500); // before the client's own look at the tree (every 3 s), no refresh() asked
+    CHECK(changes == 2 && client.tree().find("/mix/extra2"));
     CHECK(!client.write("/nowhere", QJsonArray{1}) && !client.write("/mix/level", QJsonArray{1, 2}));
 
     // A control that is a view of the remote parameter
@@ -194,6 +218,10 @@ int main(int argc, char **argv)
     QList<Device> found, lost;
     QObject::connect(&discovery, &Discovery::deviceFound, [&](const Device &d) { found << d; });
     QObject::connect(&discovery, &Discovery::deviceLost, [&](const Device &d) { lost << d; });
+    { // an instance name with dots stays one label (it is not a domain name), and the host is not the operating system's own
+        const QByteArray dotted = MdnsResponder::buildResponse("My.App 1.2", "studio", {{"_oscjson._tcp", 5678}}, {}, 120);
+        CHECK(dotted.contains(QByteArray("\x0aMy.App 1.2\x08_oscjson", 19)));
+    }
     const QByteArray hello = MdnsResponder::buildResponse("Fake (studio)", "studio", {{"_oscjson._tcp", 5678}}, {QHostAddress("192.168.1.20")}, 120);
     discovery.handle(hello);
     CHECK(found.size() == 1 && found[0].name == "Fake (studio)" && found[0].port == 5678 && found[0].address == QHostAddress("192.168.1.20"));

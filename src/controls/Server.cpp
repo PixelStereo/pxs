@@ -370,8 +370,7 @@ void Server::onData(QTcpSocket *s)
                 return;
             }
             a.failures = 0;
-            const QByteArray accept = QCryptographicHash::hash(headers.value("sec-websocket-key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
-                                                               QCryptographicHash::Sha1).toBase64();
+            const QByteArray accept = websocket::acceptKey(headers.value("sec-websocket-key"));
             s->write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n");
             c.websocket = true;
             emit clientsChanged(clientCount());

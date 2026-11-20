@@ -26,6 +26,7 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ matrix.qt }}
+          modules: qtwebsockets # the WebSocket tests (the OSCQuery server, the client) are built only with it
           cache: true
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build --config Release --parallel 3
@@ -45,7 +46,7 @@ jobs:
       - name: Dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git build-essential cmake ninja-build qt6-base-dev libqt6opengl6-dev libgl1-mesa-dev python3
+          apt-get install -y --no-install-recommends ca-certificates git build-essential cmake ninja-build qt6-base-dev libqt6websockets6-dev libqt6opengl6-dev libgl1-mesa-dev python3
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0

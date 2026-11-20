@@ -1,11 +1,21 @@
 #include <pxs/QueryServer.h>
+#include <WebSocketFrame.h>
+
 #include <QJsonDocument>
+#include <QNetworkInterface>
+#include <QTimer>
 #include <QUrl>
 
 namespace pxs {
 
 namespace {
-constexpr int kMaxRequestBytes = 16 * 1024;
+constexpr int kMaxRequestBytes = 16 * 1024;     // the headers of a request
+constexpr quint64 kMaxFrame = 1 << 20;          // a WebSocket frame from a client
+constexpr int kMaxWebSockets = 32;
+constexpr qint64 kMaxBacklog = 1 << 20;         // what a WebSocket client may be behind before it misses a frame
+constexpr int kMaxListening = 4096;             // addresses one client listens to
+constexpr int kMaxConnections = 128;            // open connections, HTTP and WebSocket
+constexpr int kHeaderMs = 10000;                // a request that has not said what it wants by then is dropped
 
 QByteArray statusLine(int status)
 {
@@ -30,7 +40,7 @@ QueryServer::QueryServer(const Tree *tree, QObject *parent)
 bool QueryServer::start(quint16 port)
 {
     stop();
-    if (!m_server.listen(QHostAddress::Any, port)) {
+    if (!m_server.listen(m_bind, port)) {
         emit logMessage(QStringLiteral("OSCQuery: cannot listen on TCP port %1: %2").arg(port).arg(m_server.errorString()));
         return false;
     }
@@ -41,53 +51,162 @@ bool QueryServer::start(quint16 port)
 void QueryServer::stop()
 {
     if (m_server.isListening()) m_server.close();
-    for (auto it = m_buffers.begin(); it != m_buffers.end(); ++it) it.key()->disconnectFromHost();
-    m_buffers.clear();
+    const auto sockets = m_clients.keys();
+    const bool had = webSocketCount() > 0;
+    m_clients.clear();
+    for (QTcpSocket *s : sockets) s->disconnectFromHost();
+    if (had) emit webSocketsChanged(0);
 }
 
 void QueryServer::onNewConnection()
 {
     while (QTcpSocket *socket = m_server.nextPendingConnection()) {
-        m_buffers.insert(socket, QByteArray());
+        if (m_clients.size() >= kMaxConnections) { // a flood of connections must not take the application's memory
+            socket->abort();
+            socket->deleteLater();
+            continue;
+        }
+        m_clients.insert(socket, Client());
+        QTimer::singleShot(kHeaderMs, socket, [this, socket] { // one that never finishes its request, or never sends it
+            const auto it = m_clients.constFind(socket);
+            if (it != m_clients.constEnd() && !it->websocket) socket->abort();
+        });
         connect(socket, &QTcpSocket::readyRead, this, [this, socket]() { onReadyRead(socket); });
         connect(socket, &QTcpSocket::disconnected, this, [this, socket]() {
-            m_buffers.remove(socket);
+            const bool was = m_clients.value(socket).websocket;
+            m_clients.remove(socket);
             socket->deleteLater();
+            if (was) emit webSocketsChanged(webSocketCount());
         });
     }
 }
 
+int QueryServer::webSocketCount() const
+{
+    int n = 0;
+    for (const Client &c : m_clients) n += c.websocket;
+    return n;
+}
+
+bool QueryServer::originAllowed(const QByteArray &origin)
+{
+    if (origin.isEmpty()) return true;
+    const QString host = QUrl(QString::fromUtf8(origin)).host();
+    if (host.isEmpty()) return false; // "null": a sandboxed frame of any page sends it
+    if (host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0) return true;
+    const QHostAddress address(host);
+    if (address.isNull()) return false; // a name: a rebound DNS name reaches this machine too
+    if (address.isLoopback()) return true;
+    for (const QHostAddress &own : QNetworkInterface::allAddresses())
+        if (own.isEqual(address, QHostAddress::TolerantConversion)) return true;
+    return false;
+}
+
+void QueryServer::stream(const QString &address, const QByteArray &packet)
+{
+    QByteArray frame;
+    for (auto it = m_clients.begin(); it != m_clients.end(); ++it) {
+        if (!it->websocket || !it->listening.contains(address) || it.key()->bytesToWrite() > kMaxBacklog) continue;
+        if (frame.isEmpty()) frame = websocket::encode(websocket::Binary, packet);
+        it.key()->write(frame);
+    }
+}
+
+void QueryServer::broadcast(const QByteArray &json)
+{
+    const QByteArray frame = websocket::encode(websocket::Text, json);
+    for (auto it = m_clients.begin(); it != m_clients.end(); ++it)
+        if (it->websocket && it.key()->bytesToWrite() <= kMaxBacklog) it.key()->write(frame);
+}
+
+bool QueryServer::upgrade(QTcpSocket *socket, const QList<QByteArray> &request, const QHash<QByteArray, QByteArray> &headers)
+{
+    const auto refuse = [&](int status) {
+        socket->write("HTTP/1.1 " + statusLine(status) + "\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+        socket->disconnectFromHost();
+        return false;
+    };
+    const QByteArray key = headers.value("sec-websocket-key");
+    if (request.value(0) != "GET" || key.isEmpty()) return refuse(400);
+    if (!originAllowed(headers.value("origin"))) return refuse(403);
+    if (webSocketCount() >= kMaxWebSockets) return refuse(503);
+    socket->write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " +
+                  websocket::acceptKey(key) + "\r\n\r\n");
+    m_clients[socket].websocket = true;
+    emit webSocketsChanged(webSocketCount());
+    return true;
+}
+
+void QueryServer::command(QTcpSocket *socket, const QByteArray &json)
+{
+    const QJsonObject o = QJsonDocument::fromJson(json).object();
+    const QString what = o.value("COMMAND").toString(), path = o.value("DATA").toString();
+    Client &c = m_clients[socket];
+    if (what == QLatin1String("LISTEN") && !path.isEmpty() && c.listening.size() < kMaxListening) c.listening.insert(path);
+    else if (what == QLatin1String("IGNORE")) c.listening.remove(path);
+}
+
 void QueryServer::onReadyRead(QTcpSocket *socket)
 {
-    QByteArray &buffer = m_buffers[socket];
-    buffer += socket->readAll();
-    if (buffer.size() > kMaxRequestBytes) {
-        socket->disconnectFromHost();
-        return;
+    auto it = m_clients.find(socket);
+    if (it == m_clients.end()) return;
+    it->buffer += socket->readAll();
+    if (!it->websocket) {
+        const int end = it->buffer.indexOf("\r\n\r\n");
+        if (end < 0) { // headers not complete yet
+            if (it->buffer.size() > kMaxRequestBytes) socket->disconnectFromHost();
+            return;
+        }
+        const QList<QByteArray> lines = it->buffer.left(end).split('\n');
+        it->buffer.remove(0, end + 4); // what follows is the client's first WebSocket frames, if it upgrades
+        const QList<QByteArray> request = lines.value(0).trimmed().split(' ');
+        QHash<QByteArray, QByteArray> headers;
+        for (int k = 1; k < lines.size(); ++k) {
+            const int colon = lines[k].indexOf(':');
+            if (colon > 0) headers.insert(lines[k].left(colon).trimmed().toLower(), lines[k].mid(colon + 1).trimmed());
+        }
+        if (headers.value("upgrade").toLower() == "websocket") {
+            if (!upgrade(socket, request, headers)) return;
+        } else {
+            Response resp;
+            if (request.size() < 2) {
+                resp.status = 400;
+            } else {
+                resp = answer(QString::fromLatin1(request[0]), request[1]);
+            }
+            QByteArray out = "HTTP/1.1 " + statusLine(resp.status) + "\r\n"
+                             "Connection: close\r\n";
+            if (m_cors) out += "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, OPTIONS\r\n";
+            if (!resp.body.isEmpty()) out += "Content-Type: application/json; charset=utf-8\r\n";
+            out += "Content-Length: " + QByteArray::number(resp.body.size()) + "\r\n\r\n";
+            if (request.value(0) != "HEAD") out += resp.body;
+            socket->write(out);
+            socket->disconnectFromHost();
+            return;
+        }
     }
-    const int end = buffer.indexOf("\r\n\r\n");
-    if (end < 0) return; // headers not complete yet
-
-    const QList<QByteArray> requestLine = buffer.left(buffer.indexOf("\r\n")).split(' ');
-    Response resp;
-    if (requestLine.size() < 2) {
-        resp.status = 400;
-    } else {
-        resp = answer(QString::fromLatin1(requestLine[0]), requestLine[1]);
+    while (true) {
+        it = m_clients.find(socket); // a handler may have closed the server
+        if (it == m_clients.end()) return;
+        int opcode = 0;
+        QByteArray payload;
+        const int got = websocket::decode(it->buffer, &opcode, &payload, kMaxFrame);
+        if (got == 0) return;
+        if (got < 0) {
+            socket->disconnectFromHost();
+            return;
+        }
+        switch (opcode) {
+        case websocket::Text: command(socket, payload); break;
+        case websocket::Binary: emit packetReceived(payload); break;
+        case websocket::Ping: socket->write(websocket::encode(websocket::Pong, payload.left(125))); break;
+        case websocket::Close:
+            socket->write(websocket::encode(websocket::Close, {}));
+            socket->disconnectFromHost();
+            return;
+        default: break;
+        }
     }
-    buffer.clear();
-
-    QByteArray out = "HTTP/1.1 " + statusLine(resp.status) + "\r\n"
-                     "Access-Control-Allow-Origin: *\r\n"
-                     "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
-                     "Connection: close\r\n";
-    if (!resp.body.isEmpty()) {
-        out += "Content-Type: application/json; charset=utf-8\r\n";
-    }
-    out += "Content-Length: " + QByteArray::number(resp.body.size()) + "\r\n\r\n";
-    if (requestLine.isEmpty() || requestLine[0] != "HEAD") out += resp.body;
-    socket->write(out);
-    socket->disconnectFromHost();
 }
 
 QueryServer::Response QueryServer::answer(const QString &method, const QByteArray &target) const
