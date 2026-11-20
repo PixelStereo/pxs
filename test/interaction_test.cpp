@@ -37,6 +37,64 @@ int main()
     q.input(th, 0.0);
     CHECK(q.step(th, 0.016).value_or(-1) == 0);
 
+    // Hold: a fall waits, a rise goes through (a switch stays on a moment after it went off)
+    Interaction hd = Interaction::made(InteractionSource::Osc);
+    hd.filters = {InteractionStage::made(InteractionFilter::Hold)};
+    hd.filters[0].a = 0.55;
+    InteractionProcessor hp;
+    hp.input(hd, 1);
+    CHECK(near(hp.step(hd, 0.1).value_or(-1), 1));
+    hp.input(hd, 0);
+    CHECK(near(hp.step(hd, 0.1).value_or(-1), 1)); // still on
+    for (int k = 0; k < 3; ++k) hp.step(hd, 0.1);
+    CHECK(near(hp.step(hd, 0.1).value_or(-1), 1)); // 0.5 s in the wait: still
+    CHECK(near(hp.step(hd, 0.1).value_or(-1), 0)); // over
+    hp.input(hd, 1);
+    CHECK(near(hp.step(hd, 0.1).value_or(-1), 1)); // a rise: at once
+
+    // Debounce: a change is followed once it lasts
+    Interaction db = Interaction::made(InteractionSource::Osc);
+    db.filters = {InteractionStage::made(InteractionFilter::Debounce)};
+    db.filters[0].a = 0.25;
+    InteractionProcessor dp;
+    dp.input(db, 0);
+    CHECK(near(dp.step(db, 0.1).value_or(-1), 0));
+    dp.input(db, 1);
+    CHECK(near(dp.step(db, 0.1).value_or(-1), 0)); // new: not yet
+    dp.input(db, 0); // flickers back
+    CHECK(near(dp.step(db, 0.1).value_or(-1), 0));
+    dp.input(db, 1);
+    dp.step(db, 0.1);
+    for (int k = 0; k < 2; ++k) dp.step(db, 0.1);
+    CHECK(near(dp.step(db, 0.1).value_or(-1), 1)); // held 0.3 s: followed
+    dp.input(db, 1);
+    CHECK(near(dp.step(db, 0.1).value_or(-1), 1));
+
+    // Auto Return: away from its rest for a time, then back (until the value is at rest again)
+    Interaction ar = Interaction::made(InteractionSource::Osc);
+    ar.filters = {InteractionStage::made(InteractionFilter::AutoReturn)};
+    ar.filters[0].a = 0.55;
+    InteractionProcessor ap;
+    ap.input(ar, 0);
+    CHECK(near(ap.step(ar, 0.1).value_or(-1), 0));
+    ap.input(ar, 1);
+    CHECK(near(ap.step(ar, 0.1).value_or(-1), 1));
+    for (int k = 0; k < 3; ++k) ap.step(ar, 0.1);
+    CHECK(near(ap.step(ar, 0.1).value_or(-1), 1)); // 0.5 s
+    CHECK(near(ap.step(ar, 0.1).value_or(-1), 0)); // back, though the value stays 1
+    CHECK(near(ap.step(ar, 0.1).value_or(-1), 0));
+    ap.input(ar, 0);
+    CHECK(near(ap.step(ar, 0.1).value_or(-1), 0)); // at rest: armed again
+    ap.input(ar, 1);
+    CHECK(near(ap.step(ar, 0.1).value_or(-1), 1));
+
+    // Their keys are saved and read back
+    for (auto kind : {InteractionFilter::Hold, InteractionFilter::Debounce, InteractionFilter::AutoReturn}) {
+        bool ok = false;
+        CHECK(interactionFilterFromKey(interactionFilterKey(kind), &ok) == kind && ok);
+        CHECK(InteractionStage::fromJson(InteractionStage::made(kind).toJson()).kind == kind);
+    }
+
     // Action mode: conditions on the value
     Interaction action = Interaction::made(InteractionSource::Osc);
     action.mode = InteractionMode::Action;
