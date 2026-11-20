@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 static const char *const kSources[] = {"keyboard", "midi", "osc", "internal", "audio"};
 static const char *const kFilters[] = {"average", "weighted_average", "pulse_detection", "attack_release", "damper",
-                                       "curve", "math", "clamp", "steps", "threshold", "delay", "speed", "remap", "toggle", "envelope"};
+                                       "curve", "math", "clamp", "steps", "threshold", "delay", "speed", "remap", "toggle", "envelope", "hold", "debounce", "return"};
 static const char *const kMathOps[] = {"add", "subtract", "multiply", "divide", "modulo", "power", "min", "max",
                                        "abs", "floor", "ceil", "round", "one_minus"};
 
@@ -100,6 +100,9 @@ QString interactionFilterName(InteractionFilter f)
     case InteractionFilter::Remap: return QStringLiteral("Remap");
     case InteractionFilter::Toggle: return QStringLiteral("Toggle");
     case InteractionFilter::Envelope: return QStringLiteral("Envelope");
+    case InteractionFilter::Hold: return QStringLiteral("Hold");
+    case InteractionFilter::Debounce: return QStringLiteral("Debounce");
+    case InteractionFilter::AutoReturn: return QStringLiteral("Auto Return");
     }
     return QString();
 }
@@ -191,6 +194,9 @@ FilterSetting interactionFilterSetting(InteractionFilter f, int which)
     case InteractionFilter::Delay: return two({"Delay", s, 0, 10, 0.5});
     case InteractionFilter::Speed: return two({"Full scale", " /s", 0.01, 100, 1}, {"Smoothing", s, 0.001, 5, 0.1});
     case InteractionFilter::Toggle: return two({"Threshold", "", 0, 1, 0.5});
+    case InteractionFilter::Hold: return two({"Hold", s, 0, 10, 0.5});
+    case InteractionFilter::Debounce: return two({"Settle", s, 0, 10, 0.1});
+    case InteractionFilter::AutoReturn: return two({"After", s, 0.01, 60, 1}, {"Back to", "", -1000, 1000, 0});
     case InteractionFilter::Envelope: {
         // The defaults are an impact: a hit at once, gone in a third of a second. Sustain above 0 holds while the trigger is held
         const FilterSetting e[] = {{"Attack", s, 0.001, 5, 0.005}, {"Decay", s, 0.001, 10, 0.3}, {"Sustain", "", 0, 1, 0}, {"Release", s, 0.001, 10, 0.3}};
@@ -621,7 +627,7 @@ std::optional<double> InteractionProcessor::step(const Interaction &it, double d
             st.y = f.kind == InteractionFilter::PulseDetection || f.kind == InteractionFilter::Speed || f.kind == InteractionFilter::Envelope ? 0.0 : x;
             st.slow = st.prev = x;
             st.v = 0;
-            st.high = f.kind != InteractionFilter::Toggle && f.kind != InteractionFilter::Envelope && x >= f.a; // a Toggle: off, its first press turns it on; an Envelope: a trigger held at the start fires it
+            st.high = f.kind != InteractionFilter::Toggle && f.kind != InteractionFilter::Envelope && f.kind != InteractionFilter::AutoReturn && x >= f.a; // a Toggle: off, its first press turns it on; an Envelope: a trigger held at the start fires it
             if (f.kind == InteractionFilter::Toggle) st.v = 0;
             st.started = true;
         }
@@ -735,6 +741,46 @@ std::optional<double> InteractionProcessor::step(const Interaction &it, double d
             default: break;
             }
             y = st.y * st.peak;
+            break;
+        }
+        case InteractionFilter::Hold: {
+            // A rise goes through; a fall waits `a` seconds at the level it fell from, then follows
+            if (x >= st.y) {
+                st.y = x;
+                st.v = 0;
+            } else {
+                st.v += dt;
+                if (st.v >= f.a) {
+                    st.y = x;
+                    st.v = 0;
+                }
+            }
+            y = st.y;
+            break;
+        }
+        case InteractionFilter::Debounce: {
+            // The value it had when it last changed, once it stayed `a` seconds: until then, the one it settled on before
+            if (std::abs(x - st.prev) > 1e-9) {
+                st.prev = x;
+                st.v = 0;
+            } else {
+                st.v += dt;
+            }
+            if (st.v >= f.a) st.y = x;
+            y = st.y;
+            break;
+        }
+        case InteractionFilter::AutoReturn: {
+            // Away from its rest (`b`), it follows for `a` seconds, then goes back to rest and stays there until the value is at rest again
+            if (std::abs(x - f.b) <= 1e-9) {
+                st.high = false; // at rest: ready
+                st.v = 0;
+                y = x;
+            } else {
+                if (!st.high) st.v += dt;
+                if (st.v >= f.a) st.high = true;
+                y = st.high ? f.b : x;
+            }
             break;
         }
         case InteractionFilter::Toggle: {

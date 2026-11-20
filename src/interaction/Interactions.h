@@ -8,7 +8,8 @@
 //     ranges — Remap (a range of values to another: In Min..Max to Out Min..Max, held within Out at its ends);
 //     over time — Average (of the last moments), Weighted Average (smoothed), Pulse Detection (a pulse on each sudden
 //     rise, decaying), Attack Release (rises and falls at speeds of their own), Damper (a spring that follows,
-//     overshooting more or less), Delay (the value of a moment ago), Speed (how fast it moves);
+//     overshooting more or less), Delay (the value of a moment ago), Speed (how fast it moves), Hold (a fall waits),
+//     Debounce (a change is followed once it lasts), Auto Return (back to its rest after a time);
 //     on the value — Curve (0..1 to 0..1, drawn as an animation's keys), Math (+, −, ×, ÷, modulo, power, min, max,
 //     absolute, floor / ceil / round to a step, 1 − x), Clamp (kept within two values), Steps (a few levels in 0..1),
 //     Threshold (0 or 1, with a margin against flicker), Toggle (flips between 0 and 1 each time it goes up past its
@@ -51,9 +52,13 @@ inline constexpr int kInteractionSourceCount = 5;
 enum class InteractionFilter {
     Average = 0, WeightedAverage, PulseDetection, AttackRelease, Damper, // over time (as before: saved by these keys)
     Curve, Math, Clamp, Steps, Threshold, Delay, Speed, Remap, Toggle,
-    Envelope // a trigger in, an ADSR out: Attack, Decay, Sustain, Release (the impact of a hit, a flash, a pulse)
+    Envelope, // a trigger in, an ADSR out: Attack, Decay, Sustain, Release (the impact of a hit, a flash, a pulse)
+    // Over time, for switches and counts as for numbers
+    Hold,      // a fall is held for a time before it follows (a switch stays on a moment after it went off)
+    Debounce,  // a change is followed once the value has not changed for a time (a flicker is ignored)
+    AutoReturn // leaves its rest value for a time, then goes back to it until the value is at rest again
 };
-inline constexpr int kInteractionFilterCount = 15;
+inline constexpr int kInteractionFilterCount = 18;
 inline constexpr int kFilterSettingCount = 4; // a, b, c, d (Remap: In Min, In Max, Out Min, Out Max)
 // A Math filter's operation on the value x, with its value a
 enum class MathOp { Add = 0, Subtract, Multiply, Divide, Modulo, Power, Min, Max, Abs, Floor, Ceil, Round, OneMinus };
