@@ -26,6 +26,7 @@ header h1 { flex:1; margin:0 10px 0 0; font-size:16px; font-weight:600; white-sp
 #tabs { display:flex; overflow-x:auto; padding:8px 14px 0; border-bottom:1px solid var(--line); -webkit-overflow-scrolling:touch; }
 #tabs button { font:inherit; font-size:14px; color:var(--dim); background:none; border:0; border-bottom:3px solid transparent; padding:8px 14px; white-space:nowrap; }
 #tabs button.on { color:var(--text); border-bottom-color:var(--acc); }
+#tabs .tbin { margin-left:8px; font-size:12px; opacity:.55; } #tabs .tbin:hover { opacity:1; color:#f08a82; }
 #grid { position:relative; margin:10px; }
 #wires { position:absolute; left:0; top:0; width:100%; height:100%; overflow:visible; pointer-events:none; z-index:5; }
 .wire { stroke:var(--acc); stroke-width:1.5; stroke-dasharray:4 3; opacity:.8; }
@@ -37,6 +38,8 @@ header h1 { flex:1; margin:0 10px 0 0; font-size:16px; font-weight:600; white-sp
 .sec .hd { font-size:13px; }
 .hd { display:flex; justify-content:space-between; align-items:baseline; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); white-space:nowrap; }
 .tile .face .hd span:first-child { font-size:15px; text-transform:none; letter-spacing:0; color:var(--text); font-weight:600; }
+.face.sig { outline:1px dashed var(--acc); outline-offset:-4px; }
+.sigtag { font-size:8px; letter-spacing:.08em; color:var(--acc); border:1px solid var(--acc); border-radius:4px; padding:0 4px; margin-left:6px; opacity:.85; font-weight:600; }
 .dest { font-size:9px; line-height:1.25; color:var(--dim); opacity:.8; overflow:hidden; word-break:break-all; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-family:ui-monospace,Menlo,monospace; }
 .hd span { overflow:hidden; text-overflow:ellipsis; }
 .hd b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:0; margin-left:8px; }
@@ -119,7 +122,8 @@ inline constexpr char kStyleB[] = R"CSS(
 .rz::after { content:""; position:absolute; right:8px; bottom:8px; width:12px; height:12px; border-right:3px solid var(--acc); border-bottom:3px solid var(--acc); border-radius:0 0 4px 0; }
 .gear { position:absolute; right:10px; top:8px; z-index:4; width:30px; height:30px; border-radius:15px; border:1px solid var(--line); background:var(--panel2); color:var(--text); font-size:15px; line-height:1; }
 .gear.bin { border-color:#6b2b27; color:#f08a82; }
-@media (min-width:760px) { body.insp { padding-right:min(360px,100%); } #sheet.pinned { box-shadow:none; } }
+/* The tiles keep the width they have in play: the inspector lies over the right edge, and the page scrolls sideways to what it covers */
+@media (min-width:760px) { body.insp { position:relative; overflow-x:auto; } body.insp::after { content:''; position:absolute; top:0; left:calc(100% + min(360px,100%)); width:1px; height:1px; } }
 .marq { position:absolute; z-index:6; border:1px solid var(--acc); background:rgba(41,199,224,.12); pointer-events:none; }
 .tile.sel { outline-offset:0; }
 #grid.compact .tile { position:relative; transition:none; }
@@ -448,9 +452,15 @@ inline constexpr char kScriptC[] = R"JS(
     return out;
   }
   const pageItems = id => controls.filter(c => c.id !== id && (id === 0 ? !c.group && c.kind !== 'group' : topOf(c) === id));
+  const resized = {}; // a tile whose widget was just changed: the size of the new widget, until the application says it has it
   function layoutOf(list) { // [{c, x, y, w, h}]: where each is saved, the rest flowed into the first free place
     const placed = [], rest = [];
-    list.forEach(c => (c.layout ? placed.push({ c, x: c.layout.x, y: c.layout.y, w: c.layout.w, h: c.layout.h }) : rest.push(c)));
+    list.forEach(c => {
+      const f = resized[c.id];
+      if (f && c.layout && c.layout.w === f.w && c.layout.h === f.h) delete resized[c.id];
+      if (c.layout) placed.push(f && resized[c.id] ? { c, x: Math.min(c.layout.x, 12 - f.w), y: c.layout.y, w: f.w, h: f.h } : { c, x: c.layout.x, y: c.layout.y, w: c.layout.w, h: c.layout.h });
+      else rest.push(c);
+    });
     rest.forEach(c => { const s = sizeOf(c); let found = false; for (let y = 0; !found; y++) for (let x = 0; x <= 12 - s[0] && !found; x++) if (!placed.some(p => hit(p, { x, y, w: s[0], h: s[1] }))) { placed.push({ c, x, y, w: s[0], h: s[1] }); found = true; } });
     return placed;
   }
@@ -491,10 +501,11 @@ inline constexpr char kScriptC[] = R"JS(
   function tile(it) {
     const c = it.c, t = { it, el: el('div', 'tile' + (c.kind === 'group' ? ' sec' : '')), api: null };
     const face = el('div', 'face'), hd = el('div', 'hd'), name = el('span', '', leaf(c.name)), val = el('b');
+    if (c.signal) face.classList.add('sig');
     if (c.dest) name.title = c.dest; // only the node's name shows; the whole address is on hover
     face.style.setProperty('--a', c.accent || '');
     if (!c.accent) face.style.removeProperty('--a');
-    hd.appendChild(name); if (c.kind === 'slider') hd.appendChild(val);
+    hd.appendChild(name); if (c.signal) { const sg = el('span', 'sigtag', 'SIGNAL'); sg.title = 'A signal the device emits: shown here, it cannot be set'; hd.appendChild(sg); } if (c.kind === 'slider') hd.appendChild(val);
     if (c.reset) { const rb = el('button', 'rst', '⟲'); rb.title = 'Reset to its default'; rb.onclick = e => { e.stopPropagation(); send({ t: 'reset', id: c.id }); }; hd.appendChild(rb); } // the default of what it shows, put back
     face.appendChild(hd);
     if (c.kind !== 'group' && c.kind !== 'toggle') {
@@ -550,7 +561,14 @@ inline constexpr char kScriptC[] = R"JS(
     $('#login').hidden = true; grid.hidden = false;
     if (!list.some(p => p.id === pageId)) pageId = list.length ? list[0].id : -1;
     const tabs = $('#tabs'); tabs.textContent = ''; tabs.hidden = list.length < 2;
-    list.forEach(p => { const b = el('button', p.id === pageId ? 'on' : '', p.name); b.onclick = () => { pageId = p.id; if (sharedPage) send({ t: 'showPage', id: String(p.id) }); render(); }; tabs.appendChild(b); });
+    list.forEach(p => {
+      const b = el('button', p.id === pageId ? 'on' : '', p.name); b.onclick = () => { pageId = p.id; if (sharedPage) send({ t: 'showPage', id: String(p.id) }); render(); }; tabs.appendChild(b);
+      if (editing) { // a bin beside the name: the page and what is on it go at once (the undo brings them back)
+        const x = el('span', 'tbin', '🗑'); x.title = 'Delete this page';
+        x.onclick = e => { e.stopPropagation(); const ids = pageItems(p.id).map(c => c.id); if (p.id) ids.push(p.id); if (ids.length) { send({ t: 'remove', ids }); sel = new Set(); sheetId = 0; } };
+        b.appendChild(x);
+      }
+    });
     grid.textContent = ''; Object.keys(tiles).forEach(k => delete tiles[k]);
     grid.classList.toggle('edit', editing);
     document.body.classList.toggle('insp', editing && inspectorMode === 'always');
@@ -574,6 +592,7 @@ inline constexpr char kScriptC[] = R"JS(
     if (!(e.metaKey || e.ctrlKey) || e.altKey || t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
     if (k === 'z' || k === 'y') { e.preventDefault(); send({ t: (k === 'y' || e.shiftKey) ? 'redo' : 'undo' }); }
   });
+  document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K') && window.parent !== window) { e.preventDefault(); try { parent.document.dispatchEvent(new parent.KeyboardEvent('keydown', { key: 'k', metaKey: e.metaKey, ctrlKey: e.ctrlKey, bubbles: true })); } catch (_) {} } }); // Cmd/Ctrl+K belongs to the page that frames this one
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E') && $('#edit').style.display !== 'none' && !$('#edit').hidden) { e.preventDefault(); $('#edit').click(); } }); // Cmd/Ctrl+E
   // Something dragged onto the page from outside (an address from a tree beside it): the application is told where
   window.pxsPageId = () => pageId; // the page shown now (an application's front page puts what it adds there)
@@ -666,6 +685,7 @@ inline constexpr char kScriptD[] = R"JS(
         s.onchange = () => { // the tile takes the size of its new widget, where it is
           const it = items.find(i => i.c.id === c.id), size = sizeOf(Object.assign({}, c, { widget: s.value }));
           send({ t: 'edit', id: c.id, props: { widget: s.value } });
+          resized[c.id] = { w: size[0], h: size[1] }; setTimeout(() => { delete resized[c.id]; }, 2500);
           if (it) { it.w = size[0]; it.h = size[1]; it.x = Math.min(it.x, 12 - it.w); resolve(items, it); saveLayout(); }
         };
         field('Widget', s);

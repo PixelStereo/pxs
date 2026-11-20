@@ -55,6 +55,7 @@ struct ParamInfo {
     // An action rather than a value: a Trigger (Rewind, Start, a timeline's Play, GO), or a value it can only be sent
     // (Seek To). A preset holds it as something to do when it is recalled, after its values
     bool action = false;
+    bool signal = false;      // a stream the device emits, with no value of its own: it can be seen, not set
     bool unbounded = false;   // no range to tell (OSCQuery omits RANGE): the value is not limited to what is shown
     QString unit;         // what it measures, as OSCQuery names it ("distance.m", "angle.degree", "gain.db", "time.ms"); empty: none said
     QString extendedType; // what it is, as OSCQuery names it ("color.rgb.r", "position.cartesian.x", "filepath"); empty: said by its components

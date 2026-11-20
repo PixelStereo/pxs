@@ -124,11 +124,13 @@ QStringList RemoteTree::leaves() const
 
 bool RemoteNode::toParamInfo(ParamInfo *out) const
 {
-    if (type.size() != 1 || kind == QLatin1String("signal")) return false;
+    if (type.size() != 1) return false;
+    if (kind == QLatin1String("signal") && type == QLatin1String("N")) return false; // an event with nothing to show
     ParamInfo info;
+    info.signal = kind == QLatin1String("signal");
     info.path = path;
     info.label = name.isEmpty() ? name : name.at(0).toUpper() + name.mid(1); // "level" -> "Level"
-    info.access = access ? access : ParamInfo::ReadWrite;
+    info.access = info.signal ? int(ParamInfo::Read) : access ? access : ParamInfo::ReadWrite;
     info.stored = false;
     const QChar t = type[0];
     const QJsonObject r = range.isEmpty() ? QJsonObject() : range[0].toObject();
