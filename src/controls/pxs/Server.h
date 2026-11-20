@@ -92,7 +92,7 @@ public:
     void setDefaultSizes(const QJsonObject &sizes);
     // How the page behaves: "inspector" ("always": in edit mode the inspector is always there; "onDemand": it opens from a tile) and "physics" (the widget
     // a physics setting is given when it is added, an encoder by default)
-    // How many words of an address (between slashes) a tile shows as its name: the last one by default, 1 to 4
+    // How many words of an address (between slashes) a tile shows as its name: the last two by default, 1 to 4
     void setNameParts(int parts);
     void setPageOptions(const QString &inspector, const QString &physicsWidget);
     // The largest message a client may send (4 KB: a control's settings). An application that takes a whole document raises it
@@ -163,7 +163,7 @@ private:
     QByteArray m_csp;
     bool m_frameable = false;
     QJsonObject m_sizes;
-    int m_nameParts = 1;
+    int m_nameParts = 2;
     QString m_inspector = QStringLiteral("always"), m_physicsWidget = QStringLiteral("knob");
     quint64 m_maxFrame = 4096;
     QHash<QString, Attempts> m_attempts; // by address
