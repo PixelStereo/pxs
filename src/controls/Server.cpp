@@ -225,8 +225,62 @@ QByteArray Server::controlsMessage(const std::vector<Control> &controls) const
     QJsonArray list;
     for (const Control &c : controls) list.append(c.wireJson());
     const QString title = m_backend->title();
-    return QJsonDocument(QJsonObject{{"t", "controls"}, {"title", title.isEmpty() ? m_name : title}, {"show", hasShowPage()}, {"sizes", m_sizes}, {"inspector", m_inspector}, {"nameParts", m_nameParts}, {"list", list}})
+    return QJsonDocument(QJsonObject{{"t", "controls"}, {"title", title.isEmpty() ? m_name : title}, {"show", hasShowPage()}, {"sizes", m_sizes}, {"inspector", m_inspector}, {"nameParts", m_nameParts}, {"sharedPage", m_sharedPage}, {"page", QString::number(m_currentPage)}, {"list", list}})
         .toJson(QJsonDocument::Compact);
+}
+
+void Server::setSharedPage(bool on)
+{
+    if (on == m_sharedPage) return;
+    m_sharedPage = on;
+    for (Client &c : m_clients) c.controlsSeen = ~0ull;
+}
+
+void Server::setCurrentPage(quint64 id)
+{
+    if (id == m_currentPage) return;
+    m_currentPage = id;
+    const QByteArray frame = QJsonDocument(QJsonObject{{"t", "page"}, {"id", QString::number(id)}}).toJson(QJsonDocument::Compact);
+    if (m_sharedPage)
+        for (QTcpSocket *s : websockets()) sendText(s, frame);
+    emit pageShown(id);
+}
+
+// The clipboard: copies of the tiles (and what a section holds), made when they were copied, so a cut tile can still be pasted
+void Server::pasteClipboard(quint64 page)
+{
+    if (m_clipboard.empty()) return;
+    checkpoint();
+    QHash<quint64, quint64> made; // the old id -> the new one
+    int below = 0, top = 1 << 20;
+    for (const Control &c : m_clipboard)
+        if (c.gw > 0) top = std::min(top, c.gy);
+    for (const Control &c : m_backend->controls())
+        if (c.gw > 0 && c.group == page && c.kind != Control::Kind::Group) below = std::max(below, c.gy + c.gh);
+    below = top == (1 << 20) ? 0 : std::max(0, below - top);
+    std::vector<quint64> added;
+    // The sections first, so what they hold has a group to go to
+    for (int pass = 0; pass < 2; ++pass)
+        for (const Control &c : m_clipboard) {
+            if ((c.kind == Control::Kind::Group) != (pass == 0)) continue;
+            Control n = c;
+            n.id = 0;
+            n.group = c.group && made.contains(c.group) ? made.value(c.group) : page;
+            if (n.gw > 0) n.gy += below; // placed: the block lands under what the page already holds, as it was laid out
+            if (const quint64 id = m_backend->add(n)) {
+                made.insert(c.id, id);
+                added.push_back(id);
+            }
+        }
+    // A widget of a physics setting follows its control when that one was pasted with it
+    for (const Control &c : m_clipboard) {
+        if (!c.physTarget || !made.contains(c.id)) continue;
+        std::optional<Control> n = m_backend->control(made.value(c.id));
+        if (!n) continue;
+        n->physTarget = made.value(c.physTarget, 0);
+        if (n->physTarget) m_backend->update(n->id, *n);
+    }
+    if (!added.empty()) emit layoutEdited();
 }
 
 void Server::setDefaultSizes(const QJsonObject &sizes)
@@ -384,6 +438,37 @@ void Server::onFrame(Client &c, int opcode, const QByteArray &payload)
             }
             if (changed) checkpoint(QStringLiteral("layout"));
             if (m_backend->setLayouts(places)) emit layoutEdited();
+            return;
+        }
+        if (type == QLatin1String("showPage")) {
+            if (m_sharedPage) setCurrentPage(o.value("id").toString().toULongLong());
+            return;
+        }
+        if (type == QLatin1String("copy") || type == QLatin1String("cut") || type == QLatin1String("paste") ||
+            (type == QLatin1String("remove") && o.contains("ids"))) {
+            if (type == QLatin1String("paste")) return pasteClipboard(o.value("page").toString().toULongLong());
+            std::vector<quint64> ids;
+            for (const QJsonValue &v : o.value("ids").toArray())
+                if (ids.size() < 256) ids.push_back(v.toString().toULongLong());
+            if (ids.empty()) return;
+            if (type == QLatin1String("copy") || type == QLatin1String("cut")) {
+                std::vector<Control> clip;
+                const std::vector<Control> all = m_backend->controls();
+                for (const Control &c : all) {
+                    const bool chosen = std::find(ids.begin(), ids.end(), c.id) != ids.end() || (c.group && std::find(ids.begin(), ids.end(), c.group) != ids.end());
+                    if (chosen && clip.size() < 512) clip.push_back(c);
+                }
+                if (clip.empty()) return;
+                m_clipboard = clip;
+                if (type == QLatin1String("cut"))
+                    for (const Control &c : clip)
+                        if (std::find(ids.begin(), ids.end(), c.id) == ids.end()) ids.push_back(c.id); // what a cut section held goes with it
+                if (type == QLatin1String("copy")) return;
+            }
+            checkpoint(); // cut or remove several: one step of undo
+            bool changed = false;
+            for (const quint64 id : ids) changed |= m_backend->remove(id);
+            if (changed) emit layoutEdited();
             return;
         }
         if (type == QLatin1String("edit") || type == QLatin1String("remove")) { // a tile's settings changed on the page, or the control removed

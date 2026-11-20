@@ -120,6 +120,8 @@ inline constexpr char kStyleB[] = R"CSS(
 .gear { position:absolute; right:10px; top:8px; z-index:4; width:30px; height:30px; border-radius:15px; border:1px solid var(--line); background:var(--panel2); color:var(--text); font-size:15px; line-height:1; }
 .gear.bin { border-color:#6b2b27; color:#f08a82; }
 @media (min-width:760px) { body.insp { padding-right:min(360px,100%); } #sheet.pinned { box-shadow:none; } }
+.marq { position:absolute; z-index:6; border:1px solid var(--acc); background:rgba(41,199,224,.12); pointer-events:none; }
+.tile.sel { outline-offset:0; }
 #grid.compact .tile { position:relative; transition:none; }
 #empty { color:var(--dim); text-align:center; padding:50px 16px; }
 #sheet { position:fixed; right:0; top:0; bottom:0; width:min(360px,100%); z-index:20; background:var(--panel); border-left:1px solid var(--line); padding:14px 16px 24px; overflow-y:auto; transform:translateX(105%); transition:transform .18s; -webkit-user-select:auto; user-select:auto; }
@@ -159,7 +161,7 @@ inline constexpr char kScriptA[] = R"JS(
   const sv = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   let pin = new URLSearchParams(location.search).get('pin') || sessionStorage.getItem('nyxmap-pin') || '', needPin = true;
-  let busyAt = 0, ws = null, opened = false, failures = 0, controls = [], sizes = {}, inspectorMode = 'always', nameParts = 2, values = {}, byId = {}, pageId = -1, editing = false, busy = 0, again = false, sheetId = 0;
+  let busyAt = 0, ws = null, opened = false, failures = 0, controls = [], sizes = {}, inspectorMode = 'always', nameParts = 2, sharedPage = false, sel = new Set(), values = {}, byId = {}, pageId = -1, editing = false, busy = 0, again = false, sheetId = 0;
   const active = new Set(), sendAt = {}, tiles = {};
   const state = (text, cls) => { const s = $('#state'); s.textContent = text; s.className = cls || ''; };
   const send = obj => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
@@ -228,8 +230,10 @@ inline constexpr char kScriptA[] = R"JS(
       if (m.t === 'controls') {
         controls = m.list || []; sizes = m.sizes || {}; inspectorMode = m.inspector === 'onDemand' ? 'onDemand' : 'always'; nameParts = Math.max(1, Math.min(4, m.nameParts | 0 || 2)); if (!editing) document.body.classList.remove('insp'); byId = {}; $('#title').textContent = m.title || 'Controls'; $('#toShow').hidden = !m.show;
         controls.forEach(c => { byId[c.id] = c; values[c.id] = c.kind === 'color' ? c.rgb : c.kind === 'pad' ? [c.x, c.y] : c.kind === 'adsr' ? c.adsr : c.kind === 'multi' ? c.values : c.kind === 'points' ? [].concat.apply([], c.points) : c.value; });
+        sharedPage = !!m.sharedPage; if (sharedPage && m.page) showPageId(m.page, false);
         if (busy && Date.now() - busyAt < 4000) again = true; else { busy = 0; render(); } // a gesture that never ended must not freeze the page
-      } else if (m.t === 'values') { Object.assign(values, m.v || {}); update(); }
+      } else if (m.t === 'values') { Object.assign(values, m.v || {}); update();
+      } else if (m.t === 'page') { showPageId(m.id, true); }
     };
     ws.onclose = () => {
       state('offline', 'bad');
@@ -450,8 +454,8 @@ inline constexpr char kScriptC[] = R"JS(
     rest.forEach(c => { const s = sizeOf(c); let found = false; for (let y = 0; !found; y++) for (let x = 0; x <= 12 - s[0] && !found; x++) if (!placed.some(p => hit(p, { x, y, w: s[0], h: s[1] }))) { placed.push({ c, x, y, w: s[0], h: s[1] }); found = true; } });
     return placed;
   }
-  function resolve(items, fixed) { // the one moved stays; those it lands on are pushed down
-    const rest = items.filter(i => i !== fixed).sort((a, b) => a.y - b.y || a.x - b.x), placed = [fixed];
+  function resolve(items, fixed) { // the one moved (or those moved) stay; those they land on are pushed down
+    const fx = Array.isArray(fixed) ? fixed : [fixed], rest = items.filter(i => fx.indexOf(i) < 0).sort((a, b) => a.y - b.y || a.x - b.x), placed = fx.slice();
     rest.forEach(it => { let y = it.y, at; while ((at = placed.find(p => hit(p, { x: it.x, y, w: it.w, h: it.h })))) y = at.y + at.h; it.y = y; placed.push(it); });
   }
   let items = [], cell = 60, rowH = 60, compact = false;
@@ -508,9 +512,25 @@ inline constexpr char kScriptC[] = R"JS(
     if (editing && !compact) {
       const shield = el('div', 'shield'), rz = el('div', 'rz'), gear = el('button', 'gear bin', '🗑');
       t.el.appendChild(shield); t.el.appendChild(rz); t.el.appendChild(gear);
-      gear.title = 'Delete'; gear.addEventListener('click', e => { e.stopPropagation(); send({ t: 'remove', id: c.id }); if (sheetId === c.id) sheetId = 0; });
+      gear.title = 'Delete'; gear.addEventListener('click', e => { e.stopPropagation(); if (sel.size > 1 && sel.has(String(c.id))) removeSelected(); else { send({ t: 'remove', id: c.id }); sel.delete(String(c.id)); if (sheetId === c.id) sheetId = 0; } });
       gear.addEventListener('touchend', e => { e.stopPropagation(); }, { passive: true });
-      const gesture = (grab, apply) => { let x0 = 0, y0 = 0, o, base; return { down: p => { x0 = p.x; y0 = p.y; o = { x: it.x, y: it.y, w: it.w, h: it.h }; base = items.map(i => ({ i, x: i.x, y: i.y })); busy++; busyAt = Date.now(); t.el.classList.add('moving'); selectTile(c.id); if (sheetId !== c.id) openSheet(c.id); }, move: p => { base.forEach(b => { if (b.i !== it) { b.i.x = b.x; b.i.y = b.y; } }); apply(o, Math.round((p.x - x0) / cell), Math.round((p.y - y0) / rowH)); resolve(items, it); items.forEach(i => place(i, tiles[i.c.id])); $('#grid').style.height = (Math.max.apply(null, items.map(i => i.y + i.h)) * rowH + rowH * 2) + 'px'; }, up: () => { t.el.classList.remove('moving'); busy--; saveLayout(); } }; };
+      const gesture = (grab, apply) => { let x0 = 0, y0 = 0, o, base, movers; return {
+        down: p => {
+          const mod = p.e && (p.e.shiftKey || p.e.metaKey || p.e.ctrlKey), key = String(c.id);
+          if (mod && !grab) { if (sel.has(key)) sel.delete(key); else sel.add(key); selectionChanged(); return false; } // shift or Cmd/Ctrl: in or out of the selection
+          if (!sel.has(key)) { sel = new Set([key]); }
+          x0 = p.x; y0 = p.y; o = { x: it.x, y: it.y, w: it.w, h: it.h }; base = items.map(i => ({ i, x: i.x, y: i.y }));
+          movers = !grab && sel.size > 1 ? items.filter(i => sel.has(String(i.c.id))) : [it];
+          busy++; busyAt = Date.now(); t.el.classList.add('moving'); selectionChanged();
+        },
+        move: p => {
+          base.forEach(b => { if (movers.indexOf(b.i) < 0) { b.i.x = b.x; b.i.y = b.y; } });
+          const dx = Math.round((p.x - x0) / cell), dy = Math.round((p.y - y0) / rowH);
+          apply(o, dx, dy);
+          if (movers.length > 1) movers.forEach(m => { if (m === it) return; const b = base.find(q => q.i === m); m.x = clamp(b.x + dx, 0, 12 - m.w); m.y = Math.max(0, b.y + dy); });
+          resolve(items, movers); items.forEach(i => place(i, tiles[i.c.id])); $('#grid').style.height = (Math.max.apply(null, items.map(i => i.y + i.h)) * rowH + rowH * 2) + 'px';
+        },
+        up: () => { t.el.classList.remove('moving'); busy--; saveLayout(); } }; };
       press(shield, gesture(0, (o, dx, dy) => { it.x = clamp(o.x + dx, 0, 12 - it.w); it.y = Math.max(0, o.y + dy); }));
       const mn = minOf(c);
       press(rz, gesture(1, (o, dx, dy) => { it.w = clamp(o.w + dx, mn[0], 12 - o.x); it.h = clamp(o.h + dy, mn[1], 40); }));
@@ -518,7 +538,8 @@ inline constexpr char kScriptC[] = R"JS(
     tiles[c.id] = t;
     return t;
   }
-  function selectTile(id) { Object.keys(tiles).forEach(k => tiles[k].el.classList.toggle('sel', Number(k) === id || k === String(id))); }
+  function selectTile(id) { sel = id ? new Set([String(id)]) : new Set(); markSel(); }
+  function markSel() { Object.keys(tiles).forEach(k => tiles[k].el.classList.toggle('sel', sel.has(k))); }
   function saveLayout() {
     const o = {}; items.forEach(i => { o[i.c.id] = { x: i.x, y: i.y, w: i.w, h: i.h }; i.c.layout = { x: i.x, y: i.y, w: i.w, h: i.h }; });
     send({ t: 'layout', items: o });
@@ -529,14 +550,14 @@ inline constexpr char kScriptC[] = R"JS(
     $('#login').hidden = true; grid.hidden = false;
     if (!list.some(p => p.id === pageId)) pageId = list.length ? list[0].id : -1;
     const tabs = $('#tabs'); tabs.textContent = ''; tabs.hidden = list.length < 2;
-    list.forEach(p => { const b = el('button', p.id === pageId ? 'on' : '', p.name); b.onclick = () => { pageId = p.id; render(); }; tabs.appendChild(b); });
+    list.forEach(p => { const b = el('button', p.id === pageId ? 'on' : '', p.name); b.onclick = () => { pageId = p.id; if (sharedPage) send({ t: 'showPage', id: String(p.id) }); render(); }; tabs.appendChild(b); });
     grid.textContent = ''; Object.keys(tiles).forEach(k => delete tiles[k]);
     grid.classList.toggle('edit', editing);
     document.body.classList.toggle('insp', editing && inspectorMode === 'always');
     if (pageId < 0) { grid.appendChild(el('div', '', 'No control yet. Add a parameter from the application: right-click it › Add to Controls Page, or drag its address here.')).id = 'empty'; $('#edit').hidden = true; return; }
     items = layoutOf(pageItems(pageId));
     items.forEach(it => grid.appendChild(tile(it).el));
-    placeAll(); update(); if (editing) { if (sheetId && !byId[sheetId]) sheetId = 0; selectTile(sheetId); if (!sheetId) inspector(); }
+    placeAll(); update(); if (editing) { sel.forEach(k => { if (!byId[k]) sel.delete(k); }); if (sheetId && !byId[sheetId]) sheetId = 0; markSel(); if (sel.size > 1) multiInspector(); else if (sheetId) selectTile(sheetId); else inspector(); }
   }
   function update() {
     for (const id in tiles) {
@@ -565,7 +586,7 @@ inline constexpr char kScriptC[] = R"JS(
     const r = $('#grid').getBoundingClientRect();
     send({ t: 'drop', data: e.dataTransfer.getData(dropType), page: String(pageId), x: compact ? 0 : clamp(Math.floor((e.clientX - r.left) / cell), 0, 11), y: compact ? 9999 : Math.max(0, Math.floor((e.clientY - r.top) / rowH)) });
   });
-  $('#edit').onclick = () => { editing = !editing; $('#edit').classList.toggle('on', editing); document.body.classList.toggle('insp', editing && inspectorMode === 'always'); if (!editing) closeSheet(); render(); };
+  $('#edit').onclick = () => { editing = !editing; $('#edit').classList.toggle('on', editing); document.body.classList.toggle('insp', editing && inspectorMode === 'always'); if (!editing) { closeSheet(); sel = new Set(); } render(); };
 )JS";
 
 // D: the settings of a tile, then the start
@@ -672,10 +693,61 @@ inline constexpr char kScriptD[] = R"JS(
     sh.appendChild(del);
     sh.classList.add('open'); sh.classList.toggle('pinned', inspectorMode === 'always');
   }
+)JS";
+
+inline constexpr char kScriptE[] = R"JS(
+  // Several tiles: shift or Cmd/Ctrl-click to add or remove one, a rectangle dragged on the empty grid to take those it touches, then move,
+  // copy (Cmd/Ctrl+C), cut (X), paste (V) or delete them. The clipboard is the server's, so a tile cut here can be pasted on any page
+  function showPageId(id, now) { const p = pages().find(q => String(q.id) === String(id)); if (!p) return; pageId = p.id; if (now) render(); }
+  function selectionChanged() {
+    if (sel.size === 1) { const id = Array.from(sel)[0]; if (sheetId === id && byId[id]) markSel(); else openSheet(id); return; }
+    flush(); sheetId = 0; markSel(); if (sel.size > 1) multiInspector(); else inspector();
+  }
+  function multiInspector() {
+    const sh = $('#sheet'); sh.textContent = ''; sh.appendChild(el('h2', '', sel.size + ' tiles'));
+    sh.appendChild(el('div', 'hint', 'Shift or Cmd/Ctrl-click adds or removes a tile; drag on the empty grid to select a few. Drag one to move them all.'));
+    const row = el('div', 'row'), mk = (t, f) => { const b = el('button', 'hb', t); b.onclick = f; const d = el('div'); d.appendChild(b); row.appendChild(d); };
+    mk('Copy', copySelected); mk('Cut', () => copySelected(true));
+    sh.appendChild(row);
+    const del = el('button', 'del', 'Delete these ' + sel.size + ' tiles'); del.onclick = removeSelected; sh.appendChild(del);
+    sh.classList.add('open'); sh.classList.toggle('pinned', inspectorMode === 'always');
+  }
+  const selIds = () => Array.from(sel).filter(k => byId[k]);
+  function removeSelected() { const ids = selIds(); if (!ids.length) return; send({ t: 'remove', ids }); sel = new Set(); sheetId = 0; }
+  function copySelected(cut) { const ids = selIds(); if (!ids.length) return; send({ t: cut === true ? 'cut' : 'copy', ids }); if (cut === true) { sel = new Set(); sheetId = 0; } }
+  const typing = e => { const t = e.target && e.target.tagName; return t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || (e.target && e.target.isContentEditable); };
+  document.addEventListener('keydown', e => {
+    if (!editing || typing(e)) return;
+    const k = (e.key || '').toLowerCase(), mod = e.metaKey || e.ctrlKey;
+    if (mod && !e.altKey && !e.shiftKey && k === 'c') { if (sel.size) { e.preventDefault(); copySelected(); } }
+    else if (mod && !e.altKey && !e.shiftKey && k === 'x') { if (sel.size) { e.preventDefault(); copySelected(true); } }
+    else if (mod && !e.altKey && !e.shiftKey && k === 'v') { e.preventDefault(); send({ t: 'paste', page: String(pageId < 0 ? 0 : pageId) }); }
+    else if (mod && !e.altKey && !e.shiftKey && k === 'a') { e.preventDefault(); sel = new Set(items.map(i => String(i.c.id))); selectionChanged(); }
+    else if ((k === 'delete' || k === 'backspace') && !mod && sel.size) { e.preventDefault(); removeSelected(); }
+    else if (k === 'escape' && sel.size) { sel = new Set(); selectionChanged(); }
+  });
+  (() => {
+    const grid = $('#grid'); let box = null, x0 = 0, y0 = 0, base = null, moved = false;
+    grid.addEventListener('mousedown', e => {
+      if (!editing || compact || e.button > 0 || e.target !== grid) return;
+      const r = grid.getBoundingClientRect(); x0 = e.clientX - r.left; y0 = e.clientY - r.top; moved = false;
+      base = e.shiftKey || e.metaKey || e.ctrlKey ? new Set(sel) : new Set();
+      box = el('div', 'marq'); grid.appendChild(box); e.preventDefault();
+      const mv = ev => {
+        moved = true; const x = ev.clientX - r.left, y = ev.clientY - r.top, l = Math.min(x, x0), t = Math.min(y, y0), w = Math.abs(x - x0), h = Math.abs(y - y0);
+        Object.assign(box.style, { left: l + 'px', top: t + 'px', width: w + 'px', height: h + 'px' });
+        const next = new Set(base);
+        items.forEach(i => { const a = i.x * cell, b = i.y * rowH; if (a < l + w && a + i.w * cell > l && b < t + h && b + i.h * rowH > t) next.add(String(i.c.id)); });
+        sel = next; markSel();
+      };
+      const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); box.remove(); box = null; if (!moved && !base.size) sel = new Set(); selectionChanged(); };
+      window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+    });
+  })();
   fetch('/info').then(r => r.json()).then(i => { needPin = !!i.pin; }).catch(() => {}).then(connect);
 })();
 )JS";
 
 inline QByteArray style() { return QByteArray(kStyleA) + kStyleB; }
-inline QByteArray script() { return QByteArray(kScriptA) + kScriptB + kScriptB2 + kScriptC + kScriptD; }
+inline QByteArray script() { return QByteArray(kScriptA) + kScriptB + kScriptB2 + kScriptC + kScriptD + kScriptE; }
 } // namespace pxs::controls::page
