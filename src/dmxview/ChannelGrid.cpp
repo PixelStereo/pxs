@@ -160,10 +160,7 @@ ChannelGrid::ChannelGrid(QWidget *parent) : QWidget(parent)
 
     connect(m_channel, &QSpinBox::valueChanged, this, [this](int number) {
         syncSelection();
-        if (m_editor->isVisible()) {
-            placeEditor();
-            refreshEditor();
-        }
+        refreshEditor();
         emit currentChannelChanged(number);
     });
     connect(m_grid->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex &current) {
@@ -301,6 +298,14 @@ void ChannelGrid::placeEditor()
 
 void ChannelGrid::refreshEditor()
 {
+    // The output of the current channel is always kept in the editor's fields (a closed editor opens on it), without telling
+    // the application it changed
+    const int current = m_channel->value();
+    const int out = m_state.output.size() == 512 ? quint8(m_state.output[current - 1]) : 0;
+    m_updating = true;
+    m_value->setValue(out);
+    m_encoder->setValue(out);
+    m_updating = false;
     if (!m_editor->isVisible()) return;
     const QVector<int> numbers = selectedChannels();
     const bool several = numbers.size() > 1;
@@ -327,13 +332,6 @@ void ChannelGrid::refreshEditor()
                            : m_state.following            ? "Follows network"
                                                           : "Not following");
     m_release->setEnabled(any);
-    // The output of the current channel, without telling the application it changed
-    const int current = m_channel->value();
-    const int out = m_state.output.size() == 512 ? quint8(m_state.output[current - 1]) : 0;
-    m_updating = true;
-    m_value->setValue(out);
-    m_encoder->setValue(out);
-    m_updating = false;
     placeEditor();
 }
 

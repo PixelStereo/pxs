@@ -185,6 +185,12 @@ static void channelGrid()
     clickCell(0, 4);
     CHECK(view.selectedChannels() == QVector<int>({5}));
 
+    // A closed editor still holds the current channel's output, so that it opens on it
+    view.closeEditor();
+    state.output[200] = char(33);
+    view.setState(state);
+    view.setCurrentChannel(201);
+    CHECK(view.findChild<QSpinBox *>("outputValue")->value() == 33 && encoder->value() == 33);
     // The editor follows the channel spin, and is closed when its channel leaves the filtered view
     channel->setValue(71);
     CHECK(view.currentChannel() == 71);
