@@ -90,6 +90,9 @@ public:
     void setFrameable(bool on) { m_frameable = on; }
     // The size {w, h} in grid cells a control is given when it has no place yet, by widget ({"vfader": [2, 5], ...}); the page's own sizes for the others
     void setDefaultSizes(const QJsonObject &sizes);
+    // How the page behaves: "inspector" ("always": in edit mode the inspector is always there; "onDemand": it opens from a tile) and "physics" (the widget
+    // a physics setting is given when it is added, an encoder by default)
+    void setPageOptions(const QString &inspector, const QString &physicsWidget);
     // The largest message a client may send (4 KB: a control's settings). An application that takes a whole document raises it
     void setMaxFrame(quint64 bytes) { m_maxFrame = bytes; }
 
@@ -158,6 +161,7 @@ private:
     QByteArray m_csp;
     bool m_frameable = false;
     QJsonObject m_sizes;
+    QString m_inspector = QStringLiteral("always"), m_physicsWidget = QStringLiteral("knob");
     quint64 m_maxFrame = 4096;
     QHash<QString, Attempts> m_attempts; // by address
 };

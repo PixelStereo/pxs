@@ -118,6 +118,8 @@ inline constexpr char kStyleB[] = R"CSS(
 .rz { position:absolute; right:4px; bottom:4px; width:34px; height:34px; z-index:4; touch-action:none; cursor:nwse-resize; }
 .rz::after { content:""; position:absolute; right:8px; bottom:8px; width:12px; height:12px; border-right:3px solid var(--acc); border-bottom:3px solid var(--acc); border-radius:0 0 4px 0; }
 .gear { position:absolute; right:10px; top:8px; z-index:4; width:30px; height:30px; border-radius:15px; border:1px solid var(--line); background:var(--panel2); color:var(--text); font-size:15px; line-height:1; }
+.gear.bin { border-color:#6b2b27; color:#f08a82; }
+@media (min-width:760px) { body.insp { padding-right:min(360px,100%); } #sheet.pinned { box-shadow:none; } }
 #grid.compact .tile { position:relative; transition:none; }
 #empty { color:var(--dim); text-align:center; padding:50px 16px; }
 #sheet { position:fixed; right:0; top:0; bottom:0; width:min(360px,100%); z-index:20; background:var(--panel); border-left:1px solid var(--line); padding:14px 16px 24px; overflow-y:auto; transform:translateX(105%); transition:transform .18s; -webkit-user-select:auto; user-select:auto; }
@@ -157,7 +159,7 @@ inline constexpr char kScriptA[] = R"JS(
   const sv = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   let pin = new URLSearchParams(location.search).get('pin') || sessionStorage.getItem('nyxmap-pin') || '', needPin = true;
-  let busyAt = 0, ws = null, opened = false, failures = 0, controls = [], sizes = {}, values = {}, byId = {}, pageId = -1, editing = false, busy = 0, again = false, sheetId = 0;
+  let busyAt = 0, ws = null, opened = false, failures = 0, controls = [], sizes = {}, inspectorMode = 'always', values = {}, byId = {}, pageId = -1, editing = false, busy = 0, again = false, sheetId = 0;
   const active = new Set(), sendAt = {}, tiles = {};
   const state = (text, cls) => { const s = $('#state'); s.textContent = text; s.className = cls || ''; };
   const send = obj => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
@@ -224,7 +226,7 @@ inline constexpr char kScriptA[] = R"JS(
     ws.onmessage = e => {
       let m; try { m = JSON.parse(e.data); } catch (_) { return; }
       if (m.t === 'controls') {
-        controls = m.list || []; sizes = m.sizes || {}; byId = {}; $('#title').textContent = m.title || 'Controls'; $('#toShow').hidden = !m.show;
+        controls = m.list || []; sizes = m.sizes || {}; inspectorMode = m.inspector === 'onDemand' ? 'onDemand' : 'always'; if (!editing) document.body.classList.remove('insp'); byId = {}; $('#title').textContent = m.title || 'Controls'; $('#toShow').hidden = !m.show;
         controls.forEach(c => { byId[c.id] = c; values[c.id] = c.kind === 'color' ? c.rgb : c.kind === 'pad' ? [c.x, c.y] : c.kind === 'adsr' ? c.adsr : c.kind === 'multi' ? c.values : c.kind === 'points' ? [].concat.apply([], c.points) : c.value; });
         if (busy && Date.now() - busyAt < 4000) again = true; else { busy = 0; render(); } // a gesture that never ended must not freeze the page
       } else if (m.t === 'values') { Object.assign(values, m.v || {}); update(); }
@@ -431,7 +433,7 @@ inline constexpr char kScriptB2[] = R"JS(
 
 // C: pages, the grid, the tiles, Edit mode (drag, resize)
 inline constexpr char kScriptC[] = R"JS(
-  const sizeOf = c => { const w = widgetOf(c), d = sizes[w]; if (d && c.kind !== 'group') return [d[0], d[1]]; return c.kind === 'group' ? [12, 1] : c.kind === 'pad' || c.kind === 'points' ? [5, 5] : c.kind === 'adsr' ? [6, 3] : c.kind === 'multi' ? (widgetOf(c) === 'hmulti' ? [6, 5] : [8, 4]) : c.kind === 'choice' ? [6, 2] : c.kind === 'slider' ? (w === 'meter' ? [1, 5] : w === 'hmeter' ? [4, 1] : w === 'graph' ? [4, 2] : w === 'readout' ? [3, 2] : w === 'knob' ? [3, 3] : w === 'vfader' ? [2, 5] : w === 'vslim' ? [1, 5] : w === 'number' ? [3, 2] : w === 'slim' ? [2, 1] : w === 'fader' ? [4, 2] : [2, 5]) : [3, 2]; };
+  const sizeOf = c => { const w = widgetOf(c), d = sizes[w]; if (d && c.kind !== 'group') return [d[0], d[1]]; return c.kind === 'group' ? [12, 1] : c.kind === 'pad' || c.kind === 'points' ? [5, 5] : c.kind === 'adsr' ? [6, 3] : c.kind === 'multi' ? (widgetOf(c) === 'hmulti' ? [6, 5] : [8, 4]) : c.kind === 'choice' ? [6, 2] : c.kind === 'slider' ? (w === 'meter' ? [1, 5] : w === 'hmeter' ? [4, 1] : w === 'graph' ? [4, 2] : w === 'readout' ? [3, 2] : w === 'knob' ? [2, 2] : w === 'vfader' ? [2, 5] : w === 'vslim' ? [1, 5] : w === 'number' ? [3, 2] : w === 'slim' ? [2, 1] : w === 'fader' ? [4, 2] : [2, 5]) : [3, 2]; };
   const minOf = c => isView(c) ? [1, 1] : c.kind === 'pad' ? [2, 2] : c.kind === 'slider' && widgetOf(c) === 'knob' ? [2, 2] : c.kind === 'slider' && (widgetOf(c) === 'vfader' || widgetOf(c) === 'vslim') ? [1, 3] : c.kind === 'group' ? [2, 1] : [2, 1];
   const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
   const topOf = c => { let p = c.group; while (p && byId[p] && byId[p].group) p = byId[p].group; return p || 0; };
@@ -504,12 +506,11 @@ inline constexpr char kScriptC[] = R"JS(
     }
     t.el.appendChild(face); t.face = face;
     if (editing && !compact) {
-      const shield = el('div', 'shield'), rz = el('div', 'rz'), gear = el('button', 'gear', '⚙');
+      const shield = el('div', 'shield'), rz = el('div', 'rz'), gear = el('button', 'gear bin', '🗑');
       t.el.appendChild(shield); t.el.appendChild(rz); t.el.appendChild(gear);
-      gear.addEventListener('click', e => { e.stopPropagation(); openSheet(c.id); });
+      gear.title = 'Delete'; gear.addEventListener('click', e => { e.stopPropagation(); send({ t: 'remove', id: c.id }); if (sheetId === c.id) sheetId = 0; });
       gear.addEventListener('touchend', e => { e.stopPropagation(); }, { passive: true });
-      shield.addEventListener('dblclick', () => openSheet(c.id));
-      const gesture = (grab, apply) => { let x0 = 0, y0 = 0, o, base; return { down: p => { x0 = p.x; y0 = p.y; o = { x: it.x, y: it.y, w: it.w, h: it.h }; base = items.map(i => ({ i, x: i.x, y: i.y })); busy++; busyAt = Date.now(); t.el.classList.add('moving'); selectTile(c.id); }, move: p => { base.forEach(b => { if (b.i !== it) { b.i.x = b.x; b.i.y = b.y; } }); apply(o, Math.round((p.x - x0) / cell), Math.round((p.y - y0) / rowH)); resolve(items, it); items.forEach(i => place(i, tiles[i.c.id])); $('#grid').style.height = (Math.max.apply(null, items.map(i => i.y + i.h)) * rowH + rowH * 2) + 'px'; }, up: () => { t.el.classList.remove('moving'); busy--; saveLayout(); } }; };
+      const gesture = (grab, apply) => { let x0 = 0, y0 = 0, o, base; return { down: p => { x0 = p.x; y0 = p.y; o = { x: it.x, y: it.y, w: it.w, h: it.h }; base = items.map(i => ({ i, x: i.x, y: i.y })); busy++; busyAt = Date.now(); t.el.classList.add('moving'); selectTile(c.id); if (sheetId !== c.id) openSheet(c.id); }, move: p => { base.forEach(b => { if (b.i !== it) { b.i.x = b.x; b.i.y = b.y; } }); apply(o, Math.round((p.x - x0) / cell), Math.round((p.y - y0) / rowH)); resolve(items, it); items.forEach(i => place(i, tiles[i.c.id])); $('#grid').style.height = (Math.max.apply(null, items.map(i => i.y + i.h)) * rowH + rowH * 2) + 'px'; }, up: () => { t.el.classList.remove('moving'); busy--; saveLayout(); } }; };
       press(shield, gesture(0, (o, dx, dy) => { it.x = clamp(o.x + dx, 0, 12 - it.w); it.y = Math.max(0, o.y + dy); }));
       const mn = minOf(c);
       press(rz, gesture(1, (o, dx, dy) => { it.w = clamp(o.w + dx, mn[0], 12 - o.x); it.h = clamp(o.h + dy, mn[1], 40); }));
@@ -531,10 +532,11 @@ inline constexpr char kScriptC[] = R"JS(
     list.forEach(p => { const b = el('button', p.id === pageId ? 'on' : '', p.name); b.onclick = () => { pageId = p.id; render(); }; tabs.appendChild(b); });
     grid.textContent = ''; Object.keys(tiles).forEach(k => delete tiles[k]);
     grid.classList.toggle('edit', editing);
+    document.body.classList.toggle('insp', editing && inspectorMode === 'always');
     if (pageId < 0) { grid.appendChild(el('div', '', 'No control yet. Add a parameter from the application: right-click it › Add to Controls Page, or drag its address here.')).id = 'empty'; $('#edit').hidden = true; return; }
     items = layoutOf(pageItems(pageId));
     items.forEach(it => grid.appendChild(tile(it).el));
-    placeAll(); update();
+    placeAll(); update(); if (editing) { if (sheetId && !byId[sheetId]) sheetId = 0; selectTile(sheetId); if (!sheetId) inspector(); }
   }
   function update() {
     for (const id in tiles) {
@@ -563,7 +565,7 @@ inline constexpr char kScriptC[] = R"JS(
     const r = $('#grid').getBoundingClientRect();
     send({ t: 'drop', data: e.dataTransfer.getData(dropType), page: String(pageId), x: compact ? 0 : clamp(Math.floor((e.clientX - r.left) / cell), 0, 11), y: compact ? 9999 : Math.max(0, Math.floor((e.clientY - r.top) / rowH)) });
   });
-  $('#edit').onclick = () => { editing = !editing; $('#edit').classList.toggle('on', editing); if (!editing) closeSheet(); render(); };
+  $('#edit').onclick = () => { editing = !editing; $('#edit').classList.toggle('on', editing); document.body.classList.toggle('insp', editing && inspectorMode === 'always'); if (!editing) closeSheet(); render(); };
 )JS";
 
 // D: the settings of a tile, then the start
@@ -572,7 +574,12 @@ inline constexpr char kScriptD[] = R"JS(
   let sheetTimer = 0, sheetProps = {}, sheetFor = 0;
   const flush = () => { clearTimeout(sheetTimer); if (sheetFor && Object.keys(sheetProps).length) send({ t: 'edit', id: sheetFor, props: sheetProps }); sheetProps = {}; };
   const push = props => { sheetFor = sheetId; sheetProps = Object.assign(sheetProps, props); clearTimeout(sheetTimer); sheetTimer = setTimeout(flush, 220); };
-  function closeSheet() { flush(); sheetId = 0; $('#sheet').classList.remove('open'); selectTile(0); }
+  function closeSheet() { flush(); sheetId = 0; $('#sheet').classList.remove('open', 'pinned'); selectTile(0); }
+  // In edit mode the inspector is always there (when the preferences say so): it shows the tile that is selected, or asks for one
+  function inspector() {
+    if (inspectorMode !== 'always') return;
+    const sh = $('#sheet'); sh.textContent = ''; sh.appendChild(el('h2', '', 'Inspector')); sh.appendChild(el('div', 'hint', 'Select a tile to edit it.')); sh.classList.add('open', 'pinned');
+  }
   // The physics of a number, as Lemur has it: Interpolate (it glides to the hand) or Mass-Spring (a spring to the hand; once let go it goes on by
   // itself with the push it got: friction, the bounce on the walls)
   function physFields(host, ph, save, widget, title) {
@@ -625,7 +632,7 @@ inline constexpr char kScriptD[] = R"JS(
     const c = byId[id]; if (!c) return;
     sheetId = id; selectTile(id);
     const sh = $('#sheet'); sh.textContent = '';
-    const h2 = el('h2', '', c.kind === 'group' ? 'Section' : 'Tile'), x = el('button', 'hb', 'Done'); x.onclick = closeSheet; h2.appendChild(x); sh.appendChild(h2);
+    const h2 = el('h2', '', c.kind === 'group' ? 'Section' : 'Tile'), x = el('button', 'hb', 'Done'); x.onclick = closeSheet; if (inspectorMode !== 'always') h2.appendChild(x); sh.appendChild(h2);
     const field = (label, node) => { sh.appendChild(el('label', '', label)); sh.appendChild(node); return node; };
     const text = (v, on) => { const i = el('input'); i.type = 'text'; i.value = v; i.oninput = () => on(i.value); return i; };
     const numeric = (v, on, step) => { const i = el('input'); i.type = 'number'; i.value = v; i.step = step || 'any'; i.inputMode = 'decimal'; i.onchange = () => { if (i.value !== '' && isFinite(Number(i.value))) on(Number(i.value)); }; return i; };
@@ -661,9 +668,9 @@ inline constexpr char kScriptD[] = R"JS(
     }
     if (c.kind === 'points' && c.balls && c.balls.length) ballEditor(sh, c, field, text, numeric);
     else if (c.physics) physFields(sh, c.physics, ph => push({ physics: ph }), key => { flush(); send({ t: 'physicsWidget', id: c.id, key }); });
-    const del = el('button', 'del', 'Delete this control'); del.onclick = () => { if (confirm('Delete "' + c.name + '"? Its OSC address goes with it.')) { send({ t: 'remove', id: c.id }); closeSheet(); } };
+    const del = el('button', 'del', 'Delete this control'); del.onclick = () => { send({ t: 'remove', id: c.id }); sheetId = 0; };
     sh.appendChild(del);
-    sh.classList.add('open');
+    sh.classList.add('open'); sh.classList.toggle('pinned', inspectorMode === 'always');
   }
   fetch('/info').then(r => r.json()).then(i => { needPin = !!i.pin; }).catch(() => {}).then(connect);
 })();
