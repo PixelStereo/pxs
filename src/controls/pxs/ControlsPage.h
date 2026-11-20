@@ -159,7 +159,7 @@ inline constexpr char kScriptA[] = R"JS(
   const sv = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   let pin = new URLSearchParams(location.search).get('pin') || sessionStorage.getItem('nyxmap-pin') || '', needPin = true;
-  let busyAt = 0, ws = null, opened = false, failures = 0, controls = [], sizes = {}, inspectorMode = 'always', nameParts = 1, values = {}, byId = {}, pageId = -1, editing = false, busy = 0, again = false, sheetId = 0;
+  let busyAt = 0, ws = null, opened = false, failures = 0, controls = [], sizes = {}, inspectorMode = 'always', nameParts = 2, values = {}, byId = {}, pageId = -1, editing = false, busy = 0, again = false, sheetId = 0;
   const active = new Set(), sendAt = {}, tiles = {};
   const state = (text, cls) => { const s = $('#state'); s.textContent = text; s.className = cls || ''; };
   const send = obj => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
@@ -226,7 +226,7 @@ inline constexpr char kScriptA[] = R"JS(
     ws.onmessage = e => {
       let m; try { m = JSON.parse(e.data); } catch (_) { return; }
       if (m.t === 'controls') {
-        controls = m.list || []; sizes = m.sizes || {}; inspectorMode = m.inspector === 'onDemand' ? 'onDemand' : 'always'; nameParts = Math.max(1, Math.min(4, m.nameParts | 0 || 1)); if (!editing) document.body.classList.remove('insp'); byId = {}; $('#title').textContent = m.title || 'Controls'; $('#toShow').hidden = !m.show;
+        controls = m.list || []; sizes = m.sizes || {}; inspectorMode = m.inspector === 'onDemand' ? 'onDemand' : 'always'; nameParts = Math.max(1, Math.min(4, m.nameParts | 0 || 2)); if (!editing) document.body.classList.remove('insp'); byId = {}; $('#title').textContent = m.title || 'Controls'; $('#toShow').hidden = !m.show;
         controls.forEach(c => { byId[c.id] = c; values[c.id] = c.kind === 'color' ? c.rgb : c.kind === 'pad' ? [c.x, c.y] : c.kind === 'adsr' ? c.adsr : c.kind === 'multi' ? c.values : c.kind === 'points' ? [].concat.apply([], c.points) : c.value; });
         if (busy && Date.now() - busyAt < 4000) again = true; else { busy = 0; render(); } // a gesture that never ended must not freeze the page
       } else if (m.t === 'values') { Object.assign(values, m.v || {}); update(); }
