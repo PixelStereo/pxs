@@ -107,8 +107,13 @@ without error (`RecallResult`).
 only when it needs it. It does not carry what **transports media** (OMT, NDI, capture): that stays in the code of the
 applications that draw or play, since it needs frames, decoders and libraries the other applications must not pay for.
 
-- **`pxs::dmx`** is the codec alone (Art-Net, sACN): frames in, frames out, strictly checked. Sockets, the merging of
-  sources (HTP, LTP, sACN priority) and what a channel drives are the application's.
+- **`pxs::dmx`** is the codec alone (Art-Net, sACN): frames in, frames out, strictly checked. What a channel drives is
+  the application's.
+- **`pxs::dmxnet`** (from DMXPulse) is what an application needs to watch a DMX network or to send onto it: a `Monitor`
+  (sockets shared with other lighting software, what each source sends, the merge of the sources of a universe) and a
+  `Transmitter` (the sequence, the sACN identity, multicast out of the chosen interface) that lets the monitor recognise the
+  application's own frames. It carries no interface: DMXPulse draws the grid, and Cold-Flame can show the same monitor as
+  an optional panel.
 - **`pxs::midi`** has the messages (an interaction's event, learn, the bytes to send), the ports, and `Inputs`, which
   opens every input while a MIDI interaction exists or the application is learning and looks again for controllers. The
   ports need an RtMidi that `pxs` does not carry: the application names its target (`set(PXS_RTMIDI_TARGET rtmidi)`

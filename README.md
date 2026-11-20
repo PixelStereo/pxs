@@ -1,22 +1,61 @@
 # pxs
 
-Shared code and conventions for the Pixel Stereo Qt applications (NyxMap, AtemRemoteOSC, ISFLab, DMXPulse,
-Cold-Flame, MpOsc). Licensed under the GNU Affero General Public License v3.0 (see `LICENSE`).
+**One address space, every protocol, one look.** The shared core of the Pixel Stereo applications: NyxMap, AtemRemoteOSC,
+ISFLab, DMXPulse, Cold-Flame, MpOsc. Declare a parameter once, and it is on the network (OSC, OSCQuery), in the
+interface, in the presets, under the mappings. Qt 6.4+, C++17, AGPL-3.0.
 
-| Path | What |
+```cpp
+pxs::Tree tree;
+auto opacity = std::make_unique<Parameter>("/layer/1/opacity", "Opacity", Parameter::Type::Float);
+opacity->range(0, 1).bind(get, set);
+tree.add("/layer/1/opacity", std::move(opacity)).description = "How opaque the layer is";
+
+pxs::OscService osc(&tree, "MyApp");
+osc.start(0, 0);   // OSC over UDP, OSCQuery over HTTP and WebSocket, announced on the network (mDNS)
+```
+
+That is all it takes for any OSCQuery client to find the app, read its tree, listen to its changes and drive it.
+
+## What is in the box
+
+**Expose**
+
+| Module | What it gives you |
 |---|---|
-| `src/osc` | `pxs::osc`: OSC 1.0 codec (messages, bundles, address patterns), Qt Core only |
-| `src/params` | `pxs::params`: how a parameter is declared (`Parameter`, `ParamInfo`) and how the others are told it changed (`ChangeFeed`); see `docs/parameters.md` |
-| `src/tree` | `pxs::tree`: the address space, a tree of nodes carrying parameters, OSC messages applied to it, the OSCQuery description derived from it (inspired by Ossia); see `docs/oscquery.md` |
-| `src/dmx` | `pxs::dmx`: the frames of Art-Net and sACN, encoded and decoded and checked in full, Qt Core only; the sockets and what a channel drives stay in the application |
-| `src/midi` | `pxs::midi`: MIDI messages as interaction events (parse, build, learn), the ports and the inputs to listen to while a MIDI interaction needs them; the ports need an RtMidi the application names (`PXS_RTMIDI_TARGET`) or a system one, else `available()` is false |
-| `src/theme` | `pxs::theme`: colour tokens, the `graphite` and `nyxmap` dark palettes, the shared style sheet (sections, toggles, captions, tabs), `pxs::apply()` (also sets Fusion, the check boxes and radio buttons); `#include <pxs/Theme.h>` |
-| `src/widgets` | `pxs::widgets`: the number fields (`SliderField`, `RangeField`, `NumberBox`, `IntBox`, from NyxMap) and `ColorPicker` (RGB, HSV, HSL, wheel, palette), Qt Widgets only |
-| `cmake/PixelStereoBuildId.cmake` | the application's version in its name: `0.2.1`, `0.2.1+3`, `0.2.1+3+` |
-| `scripts/build_id.py` | the same version for packagers that are not CMake |
-| `packaging/windows.nsi` | the Windows installer: all users by default, or the current user only |
-| `scripts/package-macos.sh` | the macOS zip: Qt deployed, ad-hoc signed, made with `ditto` |
+| `pxs::params` | how a parameter is declared (type, range, unit, default) and how the others are told it changed |
+| `pxs::tree` | the address space: nodes, parameters, **actions** (received, stateless) and **signals** (emitted, stateless), OSC applied to it, **presets by address** |
+| `pxs::osc` | OSC 1.0: messages, bundles, address patterns |
+| `pxs::oscquery` | OSCQuery server on the proposal's terms, with WebSocket `LISTEN`, `PATH_ADDED`/`REMOVED`/`CHANGED`, `EXTENDED_TYPE`, `UNIT`, mDNS |
+| `pxs::oscclient` | the other way round: find devices, read their tree, follow their values, write to them |
+
+**Control**
+
+| Module | What it gives you |
+|---|---|
+| `pxs::interaction` | a value driven from outside (key, MIDI, OSC, signal, audio) through a chain of filters, with pick-up and an Action mode (NyxMap's Interaction panel, for everyone) |
+| `pxs::midi` | MIDI messages as events (parse, build, **learn**), the ports, the inputs to listen to; bring your own RtMidi (`PXS_RTMIDI_TARGET`) or use the system one |
+| `pxs::dmx` | Art-Net and sACN frames, encoded and decoded, strictly checked; Qt Core only |
+| `pxs::dmxnet` | a **Monitor** (what every source sends, the HTP / LTP / sACN priority merge) and a **Transmitter** that recognises its own frames |
+| `pxs::bind` | expose an interface's own widgets as parameters and actions |
+| `pxs::controls` | a web page of controls (free grid, pages, edit mode, SVG widgets) and the server behind it |
+
+**Look**
+
+| Module | What it gives you |
+|---|---|
+| `pxs::theme` | colour tokens, the `graphite` and `nyxmap` dark palettes, the shared style sheet |
+| `pxs::widgets` | number fields (drag, type, snap) and the colour picker |
+
+**Ship**
+
+| | |
+|---|---|
+| `cmake/PixelStereoBuildId.cmake`, `scripts/build_id.py` | the version in the name: `0.2.1`, `0.2.1+3`, `0.2.1+3+` |
+| `packaging/windows.nsi`, `scripts/package-macos.sh` | the Windows installer, the signed macOS zip |
 | `docs/conventions.md` | how the applications are named, built, packaged and released |
+
+Control protocols live here; **media transport** (OMT, NDI, capture) does not: it stays in the applications that draw or
+play. See `docs/architecture.md` for the reasoning, the vocabulary and what comes next.
 
 ## Using it
 
@@ -24,15 +63,25 @@ Pin a tag, never a branch:
 
 ```cmake
 include(FetchContent)
-FetchContent_Declare(pxs GIT_REPOSITORY https://github.com/PixelStereo/pxs.git GIT_TAG v0.10.0)
+FetchContent_Declare(pxs GIT_REPOSITORY https://github.com/PixelStereo/pxs.git GIT_TAG v0.35.0)
 FetchContent_MakeAvailable(pxs)
 include(${pxs_SOURCE_DIR}/cmake/PixelStereoBuildId.cmake)
-target_link_libraries(MyApp PRIVATE pxs::osc pxs::params pxs::tree pxs::theme pxs::widgets)
+target_link_libraries(MyApp PRIVATE pxs::tree pxs::oscquery pxs::theme pxs::widgets)
 ```
 
-Qt 6.4 or later, C++17.
+Every module is its own target: link only what the application needs. `pxs::osc`, `pxs::params`, `pxs::tree`,
+`pxs::interaction` and `pxs::dmx` need Qt Core only.
+
+## Read on
+
+| | |
+|---|---|
+| `docs/architecture.md` | the contract: parameter, action, signal; mapping; presets; which protocols belong here |
+| `docs/parameters.md` | declaring a parameter |
+| `docs/oscquery.md` | what the server answers, the WebSocket, the attributes, who can reach it |
+| `docs/conventions.md` | names, builds, downloads |
 
 ## Migrating an application
 
-The files in `src/osc` are byte for byte the ones MpOsc and NyxMap carried. An application migrates by removing its
-copy, linking `pxs::osc` and keeping `#include "OscCodec.h"`; the namespace stays `osc::`.
+An application migrates by removing its own copy of a module, linking the pxs one, and keeping its includes: `pxs::osc`
+is byte for byte the codec MpOsc and NyxMap carried (`#include "OscCodec.h"`, namespace `osc::`).

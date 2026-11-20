@@ -83,6 +83,12 @@ add_library(pxs::dmx ALIAS pxs_dmx)
 target_include_directories(pxs_dmx PUBLIC src/dmx)
 target_link_libraries(pxs_dmx PUBLIC Qt6::Core)
 
+# DMX on the network: a Monitor (Art-Net and sACN in, what each source sends, the merge of the sources) and a Transmitter. From DMXPulse.
+add_library(pxs_dmxnet STATIC src/dmx/DmxNet.cpp src/dmx/pxs/DmxNet.h)
+add_library(pxs::dmxnet ALIAS pxs_dmxnet)
+set_target_properties(pxs_dmxnet PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(pxs_dmxnet PUBLIC pxs::dmx Qt6::Network)
+
 # MIDI: the messages as interaction events (parse, build, learn), the ports and the inputs to listen to. The ports need an RtMidi,
 # which pxs does not carry: an application that has one (it may patch or vendor it) names its target before add_subdirectory,
 #   set(PXS_RTMIDI_TARGET rtmidi)
@@ -130,6 +136,9 @@ if(PXS_BUILD_TESTS)
     add_executable(pxs_dmx_test test/dmx_test.cpp)
     target_link_libraries(pxs_dmx_test PRIVATE pxs::dmx)
     add_test(NAME dmx COMMAND pxs_dmx_test)
+    add_executable(pxs_dmxnet_test test/dmxnet_test.cpp)
+    target_link_libraries(pxs_dmxnet_test PRIVATE pxs::dmxnet)
+    add_test(NAME dmxnet COMMAND pxs_dmxnet_test)
     add_executable(pxs_midi_test test/midi_test.cpp)
     target_link_libraries(pxs_midi_test PRIVATE pxs::midi)
     add_test(NAME midi COMMAND pxs_midi_test)
