@@ -123,6 +123,7 @@ struct InteractionStage {
     double a = 0, b = 0, c = 0, d = 0; // its settings (interactionFilterSetting)
     double &setting(int which) { return which == 0 ? a : which == 1 ? b : which == 2 ? c : d; }
     double setting(int which) const { return which == 0 ? a : which == 1 ? b : which == 2 ? c : d; }
+    QString adsrControl;          // Envelope: the key of an ADSR control whose four numbers are its Attack, Decay, Sustain and Release ("": its own)
     MathOp op = MathOp::Multiply; // Math
     AnimTrack curve;              // Curve: keys over 0..1 (time) to 0..1 (value)
     QString displayName() const { return name.isEmpty() ? interactionFilterName(kind) : name; }
