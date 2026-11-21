@@ -46,6 +46,8 @@ That is all it takes for any OSCQuery client to find the app, read its tree, lis
 |---|---|
 | `pxs::theme` | colour tokens, the `graphite` and `nyxmap` dark palettes, the shared style sheet |
 | `pxs::dmxoutview` | the **DMX outputs panel**: add, switch on and edit a list of outputs (protocol, unicast or group, network card, addresses, port, rate, sACN priority and name, full or partial frames, an optional universe map), with what each one is doing; the same in every application that sends DMX |
+| `pxs::filterview` | the **filter chain of a signal**: a card per filter to fold, rename, set and drag to another place (its curve drawn for a Curve, its ADSR in the hand for an Envelope), one bar for the signal coming in and one for the signal going out, whose range follows the chain (a Remap's Out, a Clamp's ends); hooks for presets and undo |
+| `pxs::curveview` | **curves on screen**: the keys of an animation track (click, drag, draw over, easings, Bézier handles, hold) and the ADSR envelope to take in the hand |
 | `pxs::widgets` | number fields (drag, type, snap) and the colour picker |
 | `pxs::dmxview` | the **512-channel grid** of a DMX universe with its editor: click a channel (or several) and see the network's level above the level to send, set it by click, drag, wheel or typing; or read-only, as a monitor |
 
