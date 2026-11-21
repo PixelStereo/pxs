@@ -1,6 +1,7 @@
 #include "pxs/CurveLane.h"
 
 #include <QContextMenuEvent>
+#include <QCoreApplication>
 #include <QInputDialog>
 #include <QMenu>
 #include <QMouseEvent>
