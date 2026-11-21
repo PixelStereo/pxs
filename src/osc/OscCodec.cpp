@@ -1,197 +1,109 @@
 #include "OscCodec.h"
 
-#include <QtEndian>
-#include <algorithm>
-#include <cstring>
+#include <pxs/core/osc/codec.h>
 
-// ---------------------------------------------------------------------------
-// OSC encoding / decoding
-// ---------------------------------------------------------------------------
+#include <algorithm>
+#include <cstdint>
+#include <string>
+#include <vector>
 
 namespace osc {
-
-static void pad(QByteArray &b)
-{
-    while (b.size() % 4) b.append('\0');
-}
-
-static void putString(QByteArray &b, const QString &s)
-{
-    b.append(s.toUtf8());
-    b.append('\0');
-    pad(b);
-}
-
-template <typename T> static void putBE(QByteArray &b, T v)
-{
-    char raw[sizeof(T)];
-    qToBigEndian(v, raw);
-    b.append(raw, int(sizeof(T)));
-}
-
-QByteArray encode(const Message &m)
-{
-    QByteArray b;
-    putString(b, m.address);
-    putString(b, QStringLiteral(",") + m.types);
-    for (int k = 0; k < m.types.size(); ++k) {
-        const QVariant v = m.args.value(k);
-        switch (m.types[k].toLatin1()) {
-        case 'i': putBE<qint32>(b, qint32(v.toInt())); break;
-        case 'h': putBE<qint64>(b, v.toLongLong()); break;
-        case 'f': {
-            const float f = v.toFloat();
-            quint32 u;
-            std::memcpy(&u, &f, 4);
-            putBE<quint32>(b, u);
-            break;
-        }
-        case 'd': {
-            const double d = v.toDouble();
-            quint64 u;
-            std::memcpy(&u, &d, 8);
-            putBE<quint64>(b, u);
-            break;
-        }
-        case 's':
-        case 'S': putString(b, v.toString()); break;
-        case 'b': {
-            const QByteArray blob = v.toByteArray();
-            putBE<qint32>(b, qint32(blob.size()));
-            b.append(blob);
-            pad(b);
-            break;
-        }
-        case 'c': { // a character, as a 32-bit int
-            const QString c = v.toString();
-            putBE<qint32>(b, c.isEmpty() ? 0 : qint32(c.at(0).unicode()));
-            break;
-        }
-        case 'r':
-        case 'm': putBE<quint32>(b, quint32(v.toLongLong())); break; // color, MIDI: 4 bytes
-        case 't': putBE<qint64>(b, v.toLongLong()); break;          // time tag
-        default: break; // T F N I: no data
-        }
-    }
-    return b;
-}
-
 namespace {
-// Reads a packet from the network: every length comes from it, so no check may overflow (sizes as qsizetype, the
-// room left compared, never pos + n)
-struct Reader {
-    const QByteArray &b;
-    qsizetype pos = 0;
-    bool ok = true;
-    qsizetype left() const { return pos <= b.size() ? b.size() - pos : 0; }
-    bool need(qsizetype n)
-    {
-        if (n < 0 || pos > b.size() || n > b.size() - pos) ok = false;
-        return ok;
+
+pxs::core::osc::Value toCore(char type, const QVariant &value)
+{
+    using pxs::core::osc::Blob;
+    using pxs::core::osc::Value;
+    switch (type) {
+    case 'i': return std::int32_t(value.toInt());
+    case 'h':
+    case 't': return std::int64_t(value.toLongLong());
+    case 'f': return float(value.toFloat());
+    case 'd': return value.toDouble();
+    case 's':
+    case 'S': {
+        const QByteArray utf8 = value.toString().toUtf8();
+        return std::string(utf8.constData(), std::size_t(utf8.size()));
     }
-    void pad() { pos = std::min<qsizetype>((pos + 3) & ~qsizetype(3), b.size()); } // to a multiple of 4
-    QString string()
-    {
-        if (pos >= b.size()) {
-            ok = false;
-            return {};
-        }
-        const qsizetype end = b.indexOf('\0', pos);
-        if (end < 0) {
-            ok = false;
-            return {};
-        }
-        const QString s = QString::fromUtf8(b.constData() + pos, end - pos);
-        pos = end + 1;
-        pad();
-        return s;
+    case 'b': {
+        const QByteArray bytes = value.toByteArray();
+        Blob blob(std::size_t(bytes.size()));
+        if (!blob.empty()) std::copy_n(reinterpret_cast<const std::uint8_t *>(bytes.constData()), blob.size(), blob.begin());
+        return blob;
     }
-    template <typename T> T be()
-    {
-        if (!need(qsizetype(sizeof(T)))) return T();
-        const T v = qFromBigEndian<T>(b.constData() + pos);
-        pos += qsizetype(sizeof(T));
-        return v;
+    case 'c': {
+        const QString text = value.toString();
+        return std::uint32_t(text.isEmpty() ? 0 : text.at(0).unicode());
     }
-};
+    case 'r':
+    case 'm': return std::uint32_t(value.toLongLong());
+    case 'T': return true;
+    case 'F': return false;
+    default: return Value{};
+    }
+}
+
+QVariant fromCore(char type, const pxs::core::osc::Value &value)
+{
+    switch (type) {
+    case 'i': if (const auto *v = std::get_if<std::int32_t>(&value)) return int(*v); break;
+    case 'h': if (const auto *v = std::get_if<std::int64_t>(&value)) return qlonglong(*v); break;
+    case 'f': if (const auto *v = std::get_if<float>(&value)) return double(*v); break;
+    case 'd': if (const auto *v = std::get_if<double>(&value)) return *v; break;
+    case 's':
+    case 'S':
+        if (const auto *v = std::get_if<std::string>(&value)) return QString::fromUtf8(v->data(), qsizetype(v->size()));
+        break;
+    case 'b':
+        if (const auto *v = std::get_if<pxs::core::osc::Blob>(&value))
+            return QByteArray(reinterpret_cast<const char *>(v->data()), qsizetype(v->size()));
+        break;
+    case 'c':
+        if (const auto *v = std::get_if<std::uint32_t>(&value)) return QString(QChar(char16_t(*v & 0xffff)));
+        break;
+    case 'r':
+    case 'm':
+        if (const auto *v = std::get_if<std::uint32_t>(&value)) return qlonglong(*v);
+        break;
+    case 't': if (const auto *v = std::get_if<std::int64_t>(&value)) return qlonglong(*v); break;
+    case 'T': return true;
+    case 'F': return false;
+    default: return {};
+    }
+    return {};
+}
+
 } // namespace
 
-static constexpr qsizetype kMaxPacket = 1 << 20; // OSC over UDP stays far below; TCP and WebSocket frames too
-static constexpr int kMaxArgs = 1024;
-static constexpr int kMaxDepth = 8;          // nested bundles
-static constexpr size_t kMaxMessages = 1024; // bound the number of decoded messages across nested bundles
-static constexpr int kMaxOscPatternChars = 8192;
-static constexpr int kMaxOscSegmentChars = 4096;
-
-static bool decodeInto(const QByteArray &packet, std::vector<Message> &out, int depth)
+QByteArray encode(const Message &message)
 {
-    if (packet.isEmpty() || packet.size() > kMaxPacket || depth > kMaxDepth) return false;
-    if (packet.startsWith(QByteArray("#bundle", 8))) {
-        if (packet.size() < 16) return false;
-        Reader r{packet};
-        r.pos = 16; // "#bundle\0" + time tag
-        while (r.ok && r.pos < packet.size()) {
-            const qint32 size = r.be<qint32>();
-            if (!r.ok || size <= 0 || !r.need(size)) return false;
-            if (!decodeInto(packet.mid(r.pos, size), out, depth + 1)) return false;
-            r.pos += size;
-        }
-        return r.ok;
-    }
-    if (packet[0] != '/') return false;
-    Reader r{packet};
-    Message m;
-    m.address = r.string();
-    if (!r.ok) return false;
-    if (r.pos < packet.size() && packet[r.pos] == ',') {
-        const QString tags = r.string();
-        if (!r.ok || tags.size() - 1 > kMaxArgs) return false;
-        m.types = tags.mid(1);
-        for (const QChar c : std::as_const(m.types)) {
-            switch (c.toLatin1()) {
-            case 'i': m.args << QVariant(int(r.be<qint32>())); break;
-            case 'h': m.args << QVariant(qlonglong(r.be<qint64>())); break;
-            case 'f': {
-                const quint32 u = r.be<quint32>();
-                float f;
-                std::memcpy(&f, &u, 4);
-                m.args << QVariant(double(f));
-                break;
-            }
-            case 'd': {
-                const quint64 u = r.be<quint64>();
-                double d;
-                std::memcpy(&d, &u, 8);
-                m.args << QVariant(d);
-                break;
-            }
-            case 's':
-            case 'S': m.args << QVariant(r.string()); break;
-            case 'b': {
-                const qint32 n = r.be<qint32>();
-                if (!r.ok || !r.need(n)) return false;
-                m.args << QVariant(packet.mid(r.pos, n));
-                r.pos += n;
-                r.pad();
-                break;
-            }
-            case 'c': m.args << QVariant(QString(QChar(char16_t(r.be<qint32>() & 0xffff)))); break;
-            case 'r':
-            case 'm': m.args << QVariant(qlonglong(r.be<quint32>())); break;
-            case 't': m.args << QVariant(qlonglong(r.be<qint64>())); break;
-            case 'T': m.args << QVariant(true); break;
-            case 'F': m.args << QVariant(false); break;
-            default: m.args << QVariant(); break; // N, I, arrays: no value
-            }
-            if (!r.ok) return false;
-        }
-    }
-    if (out.size() >= kMaxMessages) return false;
-    out.push_back(std::move(m));
-    return true;
+    pxs::core::osc::Message portable;
+    portable.address = message.address.toUtf8().toStdString();
+    portable.types = message.types.toLatin1().toStdString();
+    portable.args.reserve(std::size_t(message.types.size()));
+    for (qsizetype i = 0; i < message.types.size(); ++i)
+        portable.args.push_back(toCore(message.types.at(i).toLatin1(), message.args.value(i)));
+    const auto bytes = pxs::core::osc::encode(portable);
+    return QByteArray(reinterpret_cast<const char *>(bytes.data()), qsizetype(bytes.size()));
 }
 
-bool decode(const QByteArray &packet, std::vector<Message> &out) { return decodeInto(packet, out, 0); }
+bool decode(const QByteArray &packet, std::vector<Message> &out)
+{
+    const auto *first = reinterpret_cast<const std::uint8_t *>(packet.constData());
+    pxs::core::osc::Bytes bytes;
+    if (!packet.isEmpty()) bytes.assign(first, first + packet.size());
+    std::vector<pxs::core::osc::Message> portable;
+    if (!pxs::core::osc::decode(bytes, portable)) return false;
+    for (const auto &item : portable) {
+        Message message;
+        message.address = QString::fromUtf8(item.address.data(), qsizetype(item.address.size()));
+        message.types = QString::fromLatin1(item.types.data(), qsizetype(item.types.size()));
+        for (std::size_t i = 0; i < item.types.size(); ++i)
+            message.args << fromCore(item.types[i], item.args[i]);
+        out.push_back(std::move(message));
+    }
+    return true;
+}
 
 // One segment: * ? [set] {alt,alt}. Matched in O(pattern × address) whatever the pattern: a backtracking matcher
 // takes exponential time on runs of '*' ("/**************a"), and any machine on the network can send one (the

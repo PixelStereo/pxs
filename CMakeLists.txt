@@ -15,11 +15,15 @@ if(PXS_BUILD_TESTS)
     find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
 endif()
 
+# The portable protocol primitives live in pxs-core. This repository keeps the
+# Qt-facing API and applications link through these compatibility targets.
+add_subdirectory(third_party/pxs-core EXCLUDE_FROM_ALL)
+
 # OSC 1.0 codec: messages, bundles, address patterns. Qt Core only.
 add_library(pxs_osc STATIC src/osc/OscCodec.cpp src/osc/OscCodec.h src/osc/WebSocketFrame.h) # the codec of OSC, and the frames of a WebSocket
 add_library(pxs::osc ALIAS pxs_osc)
 target_include_directories(pxs_osc PUBLIC src/osc)
-target_link_libraries(pxs_osc PUBLIC Qt6::Core)
+target_link_libraries(pxs_osc PUBLIC pxs-core::osc Qt6::Core)
 
 # Parameters: how an application declares what can be read, written, saved and driven over OSC, and how the others
 # are told it changed (ChangeFeed). Qt Core only.

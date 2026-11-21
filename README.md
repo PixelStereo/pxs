@@ -1,6 +1,6 @@
-# pxs
+# pxs-qt
 
-**One address space, every protocol, one look.** The shared core of the Pixel Stereo applications: NyxMap, AtemRemoteOSC,
+**One address space, every protocol, one look.** The Qt library shared by the Pixel Stereo applications: NyxMap, AtemRemoteOSC,
 ISFLab, DMXPulse, Cold-Flame, MpOsc. Declare a parameter once, and it is on the network (OSC, OSCQuery), in the
 interface, in the presets, under the mappings. Qt 6.4+, C++17, AGPL-3.0.
 
@@ -24,7 +24,7 @@ That is all it takes for any OSCQuery client to find the app, read its tree, lis
 |---|---|
 | `pxs::params` | how a parameter is declared (type, range, unit, default) and how the others are told it changed |
 | `pxs::tree` | the address space: nodes, parameters, **actions** (received, stateless) and **signals** (emitted, stateless), OSC applied to it, **presets by address** |
-| `pxs::osc` | OSC 1.0: messages, bundles, address patterns |
+| `pxs::osc` | Qt-facing OSC API; portable packet encoding and decoding come from [pxs-core](https://github.com/PixelStereo/pxs-core) |
 | `pxs::oscquery` | OSCQuery server on the proposal's terms, with WebSocket `LISTEN`, `PATH_ADDED`/`REMOVED`/`CHANGED`, `EXTENDED_TYPE`, `UNIT`, mDNS |
 | `pxs::oscclient` | the other way round: find devices, read their tree, follow their values, write to them |
 
@@ -68,14 +68,22 @@ Pin a tag, never a branch:
 
 ```cmake
 include(FetchContent)
-FetchContent_Declare(pxs GIT_REPOSITORY https://github.com/PixelStereo/pxs.git GIT_TAG v0.35.0)
+FetchContent_Declare(pxs
+  GIT_REPOSITORY https://github.com/PixelStereo/pxs-qt.git
+  GIT_TAG v0.35.0
+  GIT_SUBMODULES_RECURSE TRUE
+)
 FetchContent_MakeAvailable(pxs)
 include(${pxs_SOURCE_DIR}/cmake/PixelStereoBuildId.cmake)
 target_link_libraries(MyApp PRIVATE pxs::tree pxs::oscquery pxs::theme pxs::widgets)
 ```
 
-Every module is its own target: link only what the application needs. `pxs::osc`, `pxs::params`, `pxs::tree`,
-`pxs::interaction` and `pxs::dmx` need Qt Core only.
+Every module is its own target: link only what the application needs. The Qt modules link `pxs-core` internally;
+`pxs-core::osc` itself has no Qt dependency. Initialize nested modules when cloning `pxs-qt`:
+
+```sh
+git clone --recurse-submodules https://github.com/PixelStereo/pxs-qt.git
+```
 
 ## Read on
 

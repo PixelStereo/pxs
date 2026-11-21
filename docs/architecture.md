@@ -1,5 +1,10 @@
 # Common architecture: the tree, the leaves, the mappings
 
+The portable OSC packet codec is being extracted to [`pxs-core`](https://github.com/PixelStereo/pxs-core). The Qt-facing
+API and all Qt networking and UI modules remain in [`pxs-qt`](https://github.com/PixelStereo/pxs-qt). The first extraction
+keeps the existing `osc::Message` API as an adapter, so desktop applications continue to use their current targets while
+portable clients can link `pxs-core::osc` directly. Further modules move only after their public types no longer expose Qt.
+
 This document fixes what every Pixel Stereo application has in common to expose and drive its settings. It serves as a
 contract: an application, a parameter list, a menu or a mapping behaves the same way everywhere. Points marked **to be
 validated** are waiting for an answer.

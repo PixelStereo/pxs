@@ -62,7 +62,7 @@ on:
 permissions: { contents: write }
 jobs:
   update:
-    uses: PixelStereo/pxs/.github/workflows/release-downloads.yml@v0.12.1
+    uses: PixelStereo/pxs-qt/.github/workflows/release-downloads.yml@v0.12.1
     with: { app: MpOsc, platforms: "mac,win", pxs-ref: v0.12.1 }   # platforms: mac (Apple Silicon, and Intel when the release has it), mac-arm, mac-intel, win, linux, rpi
 ```
 
