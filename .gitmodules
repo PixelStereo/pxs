@@ -1,0 +1,3 @@
+[submodule "third_party/pxs-core"]
+	path = third_party/pxs-core
+	url = https://github.com/PixelStereo/pxs-core.git

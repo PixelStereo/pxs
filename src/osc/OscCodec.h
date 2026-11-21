@@ -1,6 +1,5 @@
 #pragma once
-// OSC 1.0 messages and bundles: encoding, decoding (packets from the network: every length is checked, a malformed
-// or hostile packet is refused), address patterns. No dependency beyond Qt Core (fuzz target: test/fuzz_osc.cpp).
+// Qt-facing OSC API: packet encoding, decoding, and address-pattern matching are implemented by pxs-core.
 
 #include <QByteArray>
 #include <QHash>
