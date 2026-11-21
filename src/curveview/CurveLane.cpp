@@ -261,7 +261,6 @@ void CurveLane::paintEvent(QPaintEvent *)
     }
 }
 
-static int s_gestures = 0; // numbers the drags of all lanes
 
 void CurveLane::mousePressEvent(QMouseEvent *e)
 {
@@ -277,14 +276,14 @@ void CurveLane::mousePressEvent(QMouseEvent *e)
     if (handleAt(e->position(), &hk, &out)) {
         m_dragHandle = hk;
         m_dragOut = out;
-        m_gesture = ++s_gestures;
+        m_gesture = ++m_drags;
         update();
         return;
     }
     const int k = keyAt(e->position());
     if (k >= 0) {
         m_dragKey = k;
-        m_gesture = ++s_gestures;
+        m_gesture = ++m_drags;
         m_press = e->position();
         m_pressKey = m_track.keys[size_t(k)];
         update();
@@ -292,7 +291,7 @@ void CurveLane::mousePressEvent(QMouseEvent *e)
     }
     // Drawing: a key now, then one every few pixels while dragging
     m_drawing = true;
-    m_gesture = ++s_gestures;
+    m_gesture = ++m_drags;
     m_base = m_track.keys;
     m_stroke = {AnimKey{tOf(e->position().x()), vOf(e->position().y()), 3}};
     m_lastDrawX = e->position().x();
@@ -568,7 +567,5 @@ void CurveLane::contextMenuEvent(QContextMenuEvent *e)
         clear->setEnabled(!m_track.keys.empty());
     }
 }
-
-int nextGesture() { return ++s_gestures; }
 
 } // namespace pxs::curveview

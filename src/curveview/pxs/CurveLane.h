@@ -33,7 +33,7 @@ public:
     QSize sizeHint() const override { return QSize(500, 96); }
 
 signals:
-    // gesture: the edits of one drag share a number (one undo step); 0: an edit on its own
+    // gesture: the edits of one drag share a number, counted in this lane (the application joins it to what names the lane, for one undo step); 0: an edit on its own
     void edited(const AnimTrack &t, int gesture);
     void zoomTime(double factor, double anchor); // ⌘/Ctrl + wheel
     void panTime(double seconds);                // Shift + wheel, horizontal wheel, middle drag
@@ -71,7 +71,7 @@ private:
     int m_dragKey = -1;
     int m_dragHandle = -1; // the key whose handle is dragged
     bool m_dragOut = false;
-    int m_gesture = 0;
+    int m_gesture = 0, m_drags = 0; // the number of the drag going on, and how many there have been in this lane
     QPointF m_press;         // where a key drag started
     AnimKey m_pressKey;
     bool m_drawing = false;
@@ -81,9 +81,6 @@ private:
     std::vector<AnimKey> m_base, m_stroke; // drawing: the keys before, and the ones drawn
     std::function<double()> m_current;
 };
-
-// A number for each drag of a lane (the edits of one drag share it: one undo step); other lanes of the application draw theirs here
-int nextGesture();
 
 // The name of a key's curve towards the next key: an easing, Bézier, hold
 QString animCurveName(int curve);
