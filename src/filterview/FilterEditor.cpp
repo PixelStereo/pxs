@@ -370,7 +370,7 @@ void FilterEditor::setSignal(const Signal &signal, const FilterChain &chain)
     active = true;
     spec = signal;
     filters = chain;
-    open.assign(filters.size(), false);
+    open.assign(filters.size(), spec.unfolded);
     title->setText(spec.title);
     title->setToolTip(spec.tooltip);
     add->setEnabled(true);

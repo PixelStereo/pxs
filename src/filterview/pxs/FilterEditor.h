@@ -49,6 +49,7 @@ struct Signal {
   std::function<void(int index, const QString &key, QWidget *label, QWidget *field)> decorate;
   // And add something under the settings of a card (it takes the widget)
   std::function<QWidget *(int index, const InteractionStage &stage)> extra;
+  bool unfolded = false;                          // the cards of an existing chain start with their settings shown
   double targetLo = NAN, targetHi = NAN;          // what a Remap writes to (default: the range of the signal)
   FilterChain invert;                             // what "Invert" adds, for this signal (empty: no Invert in the menu)
 };
