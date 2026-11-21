@@ -432,6 +432,13 @@ void FilterEditor::setTrace(bool available, double value, const std::vector<doub
     for (const auto &[index, lane] : curveLanes) {
         const double in = index == 0 ? value : index - 1 < int(afterEach.size()) ? afterEach[size_t(index - 1)] : value;
         lane->setPlayhead(in, available);
+        // and what the curve makes of it: the signal after this filter
+        lane->setProbe(index < int(afterEach.size()) ? afterEach[size_t(index)] : in, available);
+    }
+    // An envelope shows the signal going into it and the level it gives
+    for (const auto &[index, curve] : envelopeCurves) {
+        const double in = index == 0 ? value : index - 1 < int(afterEach.size()) ? afterEach[size_t(index - 1)] : value;
+        curve->setLive(in, index < int(afterEach.size()) ? afterEach[size_t(index)] : in, available);
     }
 }
 
@@ -496,6 +503,7 @@ void FilterEditor::rebuild()
     rebuilding = true;
     list->clear();
     curveLanes.clear();
+    envelopeCurves.clear();
     updateSpan();
     for (size_t i = 0; i < filters.size(); ++i) addCard(int(i));
     fitItems();
@@ -607,6 +615,9 @@ void FilterEditor::addCard(int index)
     if (stage.kind == InteractionFilter::Envelope) { // in the hand: the four settings above follow it
         auto *curve = new curveview::AdsrCurve;
         curve->longest = 5;
+        curve->showScope = true;
+        curve->setMinimumHeight(curve->minimumHeight() + 54);
+        envelopeCurves.push_back({index, curve});
         curveview::AdsrCurve::Values shape;
         shape.attack = stage.a;
         shape.decay = stage.b;

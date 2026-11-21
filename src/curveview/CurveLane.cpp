@@ -99,6 +99,14 @@ void CurveLane::setLive(double v)
     if (m_dragKey < 0 && m_dragHandle < 0) update();
 }
 
+void CurveLane::setProbe(double value, bool shown)
+{
+    if (shown == m_showProbe && (!shown || std::abs(value - m_probe) < 1e-6)) return;
+    m_probe = value;
+    m_showProbe = shown;
+    update();
+}
+
 void CurveLane::setPlayhead(double position, bool shown, double played, bool backwards)
 {
     if (!std::isfinite(played)) played = position;
@@ -259,6 +267,14 @@ void CurveLane::paintEvent(QPaintEvent *)
     if (m_showPlayhead) {
         p.setPen(QPen(kPlayhead, 1.5));
         p.drawLine(QPointF(xOf(m_playhead), 0), QPointF(xOf(m_playhead), height()));
+        if (m_showProbe) { // what the curve makes of it: across to the value axis, and a dot on the curve
+            const QPointF at(xOf(m_playhead), yOf(m_probe));
+            p.setPen(QPen(kPlayhead, 1, Qt::DashLine));
+            p.drawLine(QPointF(0, at.y()), at);
+            p.setPen(QPen(QColor(20, 20, 24), 1));
+            p.setBrush(kPlayhead);
+            p.drawEllipse(at, 5, 5);
+        }
     }
 }
 

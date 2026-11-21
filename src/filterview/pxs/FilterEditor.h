@@ -16,6 +16,7 @@ class QPushButton;
 class QToolButton;
 
 namespace pxs::curveview {
+class AdsrCurve;
 class CurveLane;
 }
 
@@ -109,6 +110,7 @@ private:
   QListWidget *list;
   bool rebuilding = false, fitContent = false;
   double outLo = 0, outHi = 1; // the range of the bar after the filters
+  std::vector<std::pair<int, curveview::AdsrCurve *>> envelopeCurves; // an Envelope card's editor, with its place in the chain
   std::vector<std::pair<int, curveview::CurveLane *>> curveLanes; // a Curve card's editor, with its place in the chain
 };
 
