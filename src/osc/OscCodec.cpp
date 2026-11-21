@@ -23,7 +23,8 @@ pxs::core::osc::Value toCore(char type, const QVariant &value)
     case 's':
     case 'S': {
         const QByteArray utf8 = value.toString().toUtf8();
-        return std::string(utf8.constData(), std::size_t(utf8.size()));
+        const char *data = utf8.constData();
+        return std::string(data ? data : "", std::size_t(utf8.size()));
     }
     case 'b': {
         const QByteArray bytes = value.toByteArray();
@@ -55,8 +56,10 @@ QVariant fromCore(char type, const pxs::core::osc::Value &value)
         if (const auto *v = std::get_if<std::string>(&value)) return QString::fromUtf8(v->data(), qsizetype(v->size()));
         break;
     case 'b':
-        if (const auto *v = std::get_if<pxs::core::osc::Blob>(&value))
+        if (const auto *v = std::get_if<pxs::core::osc::Blob>(&value)) {
+            if (v->empty()) return QByteArray();
             return QByteArray(reinterpret_cast<const char *>(v->data()), qsizetype(v->size()));
+        }
         break;
     case 'c':
         if (const auto *v = std::get_if<std::uint32_t>(&value)) return QString(QChar(char16_t(*v & 0xffff)));
@@ -105,128 +108,14 @@ bool decode(const QByteArray &packet, std::vector<Message> &out)
     return true;
 }
 
-// One segment: * ? [set] {alt,alt}. Matched in O(pattern × address) whatever the pattern: a backtracking matcher
-// takes exponential time on runs of '*' ("/**************a"), and any machine on the network can send one (the
-// fuzzer found it: a 1-minute run stuck for over 20 minutes). The pattern becomes tokens, then the positions of the
-// address it can have reached are carried from one token to the next (two rows).
-namespace {
-struct Token {
-    enum Kind { Char, Any, Star, Set, Alt } kind = Char;
-    QChar c;
-    QString set; // Set: its characters and ranges (a-z), without the '!'
-    bool negate = false;
-    QStringList alts; // Alt: literal alternatives (OSC 1.0: "{foo,bar}")
-};
-
-bool inSet(const Token &t, QChar ch)
-{
-    bool in = false;
-    for (int k = 0; k < t.set.size(); ++k) {
-        if (k + 2 < t.set.size() && t.set[k + 1] == '-') {
-            in |= ch >= t.set[k] && ch <= t.set[k + 2];
-            k += 2;
-        } else {
-            in |= ch == t.set[k];
-        }
-    }
-    return in != t.negate;
-}
-
-// false: malformed ('[' or '{' never closed), which matches nothing
-bool tokenize(const QString &p, std::vector<Token> &out)
-{
-    for (int pi = 0; pi < p.size(); ++pi) {
-        const QChar c = p[pi];
-        Token t;
-        if (c == '*') {
-            if (!out.empty() && out.back().kind == Token::Star) continue; // "**" is "*"
-            t.kind = Token::Star;
-        } else if (c == '?') {
-            t.kind = Token::Any;
-        } else if (c == '[') {
-            const int end = p.indexOf(']', pi);
-            if (end < 0) return false;
-            t.kind = Token::Set;
-            t.set = p.mid(pi + 1, end - pi - 1);
-            t.negate = t.set.startsWith('!');
-            if (t.negate) t.set.remove(0, 1);
-            pi = end;
-        } else if (c == '{') {
-            const int end = p.indexOf('}', pi);
-            if (end < 0) return false;
-            t.kind = Token::Alt;
-            t.alts = p.mid(pi + 1, end - pi - 1).split(',');
-            pi = end;
-        } else {
-            t.c = c;
-        }
-        out.push_back(std::move(t));
-    }
-    return true;
-}
-} // namespace
-
-static bool matchSeg(const QString &p, const QString &s)
-{
-    static const QString special = QStringLiteral("*?[{");
-    if (std::none_of(p.begin(), p.end(), [](QChar c) { return special.contains(c); })) return p == s; // the usual case
-    std::vector<Token> tokens;
-    if (!tokenize(p, tokens)) return false;
-    const int n = int(s.size());
-    std::vector<char> at(size_t(n) + 1, 0), next(size_t(n) + 1, 0);
-    at[0] = 1;
-    for (const Token &t : tokens) {
-        std::fill(next.begin(), next.end(), 0);
-        bool any = false;
-        if (t.kind == Token::Star) { // from the first position reached, every one after it
-            bool on = false;
-            for (int si = 0; si <= n; ++si) {
-                on = on || at[size_t(si)];
-                next[size_t(si)] = on;
-                any = any || on;
-            }
-        } else {
-            for (int si = 0; si <= n; ++si) {
-                if (!at[size_t(si)]) continue;
-                switch (t.kind) {
-                case Token::Char:
-                    if (si < n && s[si] == t.c) next[size_t(si) + 1] = any = true;
-                    break;
-                case Token::Any:
-                    if (si < n) next[size_t(si) + 1] = any = true;
-                    break;
-                case Token::Set:
-                    if (si < n && inSet(t, s[si])) next[size_t(si) + 1] = any = true;
-                    break;
-                case Token::Alt:
-                    for (const QString &alt : t.alts)
-                        if (QStringView(s).mid(si).startsWith(alt)) next[size_t(si) + size_t(alt.size())] = any = true;
-                    break;
-                case Token::Star:
-                    break;
-                }
-            }
-        }
-        if (!any) return false;
-        at.swap(next);
-    }
-    return at[size_t(n)];
-}
-
 bool match(const QString &pattern, const QString &address)
 {
-    // Bound work and allocations before tokenization or dynamic programming.
-    // Valid OSC inputs fit comfortably within these operational safety caps.
-    if (pattern.size() > kMaxOscPatternChars || address.size() > kMaxOscPatternChars)
-        return false;
-    const QStringList p = pattern.split('/'), a = address.split('/');
-    if (p.size() != a.size()) return false;
-    for (int k = 0; k < p.size(); ++k) {
-        if (p[k].size() > kMaxOscSegmentChars || a[k].size() > kMaxOscSegmentChars)
-            return false;
-        if (!matchSeg(p[k], a[k])) return false;
-    }
-    return true;
+    const QByteArray p = pattern.toUtf8();
+    const QByteArray a = address.toUtf8();
+    const char *pData = p.constData();
+    const char *aData = a.constData();
+    return pxs::core::osc::match(std::string(pData ? pData : "", std::size_t(p.size())),
+                                 std::string(aData ? aData : "", std::size_t(a.size())));
 }
 
 QString safeName(const QString &name)

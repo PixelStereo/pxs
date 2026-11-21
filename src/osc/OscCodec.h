@@ -1,5 +1,5 @@
 #pragma once
-// Qt-facing OSC API: packet encoding and decoding are implemented by pxs-core; matching and address naming stay in pxs-qt.
+// Qt-facing OSC API: packet encoding, decoding, and address-pattern matching are implemented by pxs-core.
 
 #include <QByteArray>
 #include <QHash>
