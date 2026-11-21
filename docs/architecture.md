@@ -119,6 +119,10 @@ applications that draw or play, since it needs frames, decoders and libraries th
   each channel the application owns (so a receiver takes the others from another source), and the three terminated frames when
   an output goes off. Applications are before version 1: no legacy format is kept, a project written for an older one is
   edited by hand. Still to come: the panel that edits a list of outputs, and Art-Net node discovery (ArtPoll) to pick a destination.
+- **`pxs::dmxoutview`** is the panel that edits a list of `pxs::dmx::Output`: a table (on, name, protocol, what the output is
+  doing, from the `Sender`'s state) and the settings of the selected one, each shown only where it applies (the addresses
+  in unicast, the priority and source name for sACN, the universe map only for an application that routes). It keeps no outputs: the
+  application hands them over and is told each change, with the text an undo step can carry.
 - **`pxs::dmxnet`** (from DMXPulse) is what an application needs to watch a DMX network or to send onto it: a `Monitor`
   (sockets shared with other lighting software, what each source sends, the merge of the sources of a universe) and a
   `Transmitter` (the sequence, the sACN identity, multicast out of the chosen interface) that lets the monitor recognise the
