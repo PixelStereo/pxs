@@ -10,6 +10,7 @@
 #include <QWidget>
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <functional>
 #include <vector>
 
@@ -30,6 +31,7 @@ public:
     double longest = 10;                        // the longest attack, decay or release
     Shape shape = Shape::Exponential;
     bool hasHold = false, hasFinal = false;
+    bool showScope = false; // a strip under the shape: the signal going in and the level coming out, over the last seconds
 
     explicit AdsrCurve(QWidget *parent = nullptr) : QWidget(parent)
     {
@@ -98,6 +100,22 @@ public:
         }
         update();
     }
+    // The live signal: what goes into the envelope and what it gives (0..1), as they are now. `available` false: the signal is not there.
+    // Drawn as a level line across the shape, and (showScope) as a trace over the last seconds.
+    void setLive(double in, double out, bool available)
+    {
+        const qint64 now = m_scopeClock.isValid() ? m_scopeClock.elapsed() : (m_scopeClock.start(), 0);
+        m_liveOn = available;
+        if (available) {
+            m_history.push_back({now, std::clamp(in, 0.0, 1.0), std::clamp(out, 0.0, 1.0)});
+            while (!m_history.empty() && now - m_history.front().ms > kScopeMs) m_history.pop_front();
+        } else {
+            m_history.clear();
+        }
+        update();
+    }
+    bool hasLive() const { return m_liveOn; }
+    size_t liveSamples() const { return m_history.size(); }
     double playingLevel() const { return m_level; }
 
 protected:
@@ -139,6 +157,7 @@ protected:
             p.setBrush(k == m_drag || k == m_over ? QColor(120, 225, 235) : QColor(30, 30, 34));
             p.drawEllipse(point(k), bend ? 4 : 5, bend ? 4 : 5);
         }
+        paintLive(p, r);
         if (m_stage) { // where it is now
             double x = hold.x();
             if (m_stage == 1) x = r.left() + (a.x() - r.left()) * std::min(1.0, m_time / std::max(0.001, m_v.attack));
@@ -259,7 +278,54 @@ private:
         if (which >= BendAttack) return shape == Shape::Biased;
         return true;
     }
-    QRectF area() const { return QRectF(rect()).adjusted(8, 10, -8, -22); }
+    static constexpr qint64 kScopeMs = 4000;
+    static constexpr int kScopeHeight = 46;
+    QRectF area() const { return QRectF(rect()).adjusted(8, 10, -8, -22 - (showScope ? kScopeHeight + 8 : 0)); }
+    QRectF scopeArea() const { return QRectF(8, height() - 22 - kScopeHeight, width() - 16, kScopeHeight); }
+    void paintLive(QPainter &p, const QRectF &r)
+    {
+        if (showScope) {
+            const QRectF s = scopeArea();
+            p.fillRect(s, QColor(18, 18, 22));
+            p.setPen(QColor(50, 50, 56));
+            p.drawRect(s);
+        }
+        if (!m_liveOn || m_history.empty()) return;
+        const QColor in(76, 217, 100), out(255, 190, 80);
+        const auto last = m_history.back();
+        // across the shape: the level the envelope gives now
+        p.setPen(QPen(out, 1, Qt::DashLine));
+        p.drawLine(QPointF(r.left(), yOf(last.out)), QPointF(r.right(), yOf(last.out)));
+        p.setPen(Qt::NoPen);
+        p.setBrush(out);
+        p.drawEllipse(QPointF(r.right(), yOf(last.out)), 4, 4);
+        if (!showScope) return;
+        // the trace: time runs to the right, the newest at the right edge
+        const QRectF s = scopeArea().adjusted(1, 3, -1, -3);
+        const auto trace = [&](bool output, const QColor &c) {
+            QPainterPath path;
+            bool first = true;
+            for (const Sample &k : m_history) {
+                const double x = s.right() - s.width() * double(last.ms - k.ms) / double(kScopeMs);
+                const QPointF pt(x, s.bottom() - (output ? k.out : k.in) * s.height());
+                if (first) path.moveTo(pt);
+                else path.lineTo(pt);
+                first = false;
+            }
+            p.setBrush(Qt::NoBrush);
+            p.setPen(QPen(c, 1.6));
+            p.drawPath(path);
+        };
+        p.save();
+        p.setClipRect(s);
+        trace(false, in);
+        trace(true, out);
+        p.restore();
+        p.setPen(in);
+        p.drawText(QRectF(s.left() + 3, s.top(), 60, 12), Qt::AlignLeft | Qt::AlignTop, QStringLiteral("in"));
+        p.setPen(out);
+        p.drawText(QRectF(s.left() + 22, s.top(), 60, 12), Qt::AlignLeft | Qt::AlignTop, QStringLiteral("out"));
+    }
     double yOf(double level) const { return area().bottom() - std::clamp(level, 0.0, 1.0) * area().height(); }
     double slot() const { return area().width() * (hasHold ? 0.23 : 0.3); } // each of them: what its time takes
     // The short times, those that count, get the room: the root of the time
@@ -290,7 +356,13 @@ private:
     int m_stage = 0; // playing: 1 attack, 2 hold, 3 decay, 4 sustain, 5 release
     double m_level = 0, m_fallFrom = 1, m_time = 0;
     QTimer *m_timer = nullptr;
-    QElapsedTimer m_clock;
+    QElapsedTimer m_clock, m_scopeClock;
+    struct Sample {
+        qint64 ms;
+        double in, out;
+    };
+    std::deque<Sample> m_history;
+    bool m_liveOn = false;
 };
 
 } // namespace pxs::curveview

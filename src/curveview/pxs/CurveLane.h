@@ -24,6 +24,8 @@ public:
     // What is shown: seconds t0..t1, values vlo..vhi (the zoom)
     void setView(double t0, double t1, double vlo, double vhi);
     void setPlayhead(double position, bool shown, double played = NAN, bool backwards = false);
+    // The value the curve gives for the signal at the playhead (`shown`: false hides it): a dot on the curve with a guide to the value axis
+    void setProbe(double value, bool shown);
     void setCurrentValue(std::function<double()> f) { m_current = std::move(f); }
     void setLive(double v); // the value a "current value" first key starts from (captured, or the number now)
     double fullLo() const { return m_lo; }
@@ -68,6 +70,8 @@ private:
     bool m_backwards = false;
     double m_live = std::numeric_limits<double>::quiet_NaN();
     bool m_showPlayhead = false;
+    double m_probe = 0;
+    bool m_showProbe = false;
     int m_dragKey = -1;
     int m_dragHandle = -1; // the key whose handle is dragged
     bool m_dragOut = false;

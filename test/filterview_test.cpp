@@ -133,6 +133,14 @@ static void richFilters()
     CHECK(decorated > 0 && extras == 3);
     // The signal going into the curve marks it
     editor.setTrace(true, 0.4, {0.4, 0.4, 0.4});
+    // The envelope sees the signal going in and the level coming out, and forgets them when the signal goes
+    auto *adsr = static_cast<pxs::curveview::AdsrCurve *>(editor.findChild<QWidget *>("adsrCurve"));
+    CHECK(adsr != nullptr && adsr->hasLive() && adsr->liveSamples() == 1);
+    editor.setTrace(true, 0.5, {0.5, 0.9, 0.9});
+    CHECK(adsr->liveSamples() == 2);
+    editor.grab(); // painting the trace and the dot on the curve does not trip
+    editor.setTrace(false, 0, {});
+    CHECK(!adsr->hasLive() && adsr->liveSamples() == 0);
     // A name: shown with the type, and told
     editor.renameFilter(2, "Calm");
     CHECK(editor.chain()[2].name == "Calm" && texts.back() == "Rename Filter");
