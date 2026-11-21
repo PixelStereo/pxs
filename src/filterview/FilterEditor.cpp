@@ -298,6 +298,7 @@ FilterEditor::FilterEditor(QWidget *parent) : QWidget(parent)
     column->addWidget(title);
     auto *tools = new QHBoxLayout;
     add = new QPushButton(QStringLiteral("Add filter"));
+    add->setObjectName("addFilter");
     add->setToolTip("Add a filter at the end of the chain");
     clear = new QToolButton;
     clear->setText(QStringLiteral("Clear"));
@@ -508,6 +509,9 @@ void FilterEditor::addCard(int index)
     item->setData(Qt::UserRole, index);
     auto *card = new FilterCard(filters[size_t(index)], open[size_t(index)], index);
     card->setObjectName("filterCard");
+    card->name->setObjectName(QStringLiteral("filterName%1").arg(index));
+    card->enabled->setObjectName(QStringLiteral("filterOn%1").arg(index));
+    card->remove->setObjectName(QStringLiteral("removeFilter%1").arg(index));
     card->setAttribute(Qt::WA_StyledBackground);
     card->setStyleSheet("QWidget#filterCard { border:1px solid palette(mid); border-radius:5px; }");
     list->setItemWidget(item, card);
@@ -558,6 +562,7 @@ void FilterEditor::addCard(int index)
         auto *operation = new QComboBox;
         for (int op = 0; op < kMathOpCount; ++op) operation->addItem(mathOpName(MathOp(op)), op);
         operation->setCurrentIndex(int(stage.op));
+        operation->setObjectName(QStringLiteral("filterOp%1").arg(index));
         addRow(new QLabel("Operation"), operation);
         if (spec.decorate) spec.decorate(index, "op", nullptr, operation);
         connect(operation, &QComboBox::activated, this, [this, index, operation](int) {
