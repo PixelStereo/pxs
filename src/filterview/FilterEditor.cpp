@@ -466,6 +466,22 @@ void FilterEditor::fitItems()
         const int width = std::max(120, list->viewport()->width() - 2 * list->spacing());
         item->setSizeHint(QSize(width, card->height()));
     }
+    if (fitContent) { // the list as high as its cards: the one that holds the editor scrolls
+        int total = 2 * list->frameWidth() + list->spacing();
+        for (int row = 0; row < list->count(); ++row) total += list->item(row)->sizeHint().height() + list->spacing();
+        list->setFixedHeight(std::max(total, 4));
+        updateGeometry();
+    }
+}
+
+void FilterEditor::setFitContent(bool on)
+{
+    fitContent = on;
+    if (!on) {
+        list->setMinimumHeight(0);
+        list->setMaximumHeight(QWIDGETSIZE_MAX);
+    }
+    fitItems();
 }
 
 void FilterEditor::resizeEvent(QResizeEvent *event)
@@ -504,6 +520,7 @@ void FilterEditor::addCard(int index)
         card->layout()->activate();
         fitItems();
     });
+    if (spec.decorate) spec.decorate(index, "enable", nullptr, card->enabled);
     connect(card->enabled, &QCheckBox::toggled, this, [this, index](bool on) {
         filters[size_t(index)].enabled = on;
         edited(true, "Change Filter");
@@ -542,6 +559,7 @@ void FilterEditor::addCard(int index)
         for (int op = 0; op < kMathOpCount; ++op) operation->addItem(mathOpName(MathOp(op)), op);
         operation->setCurrentIndex(int(stage.op));
         addRow(new QLabel("Operation"), operation);
+        if (spec.decorate) spec.decorate(index, "op", nullptr, operation);
         connect(operation, &QComboBox::activated, this, [this, index, operation](int) {
             filters[size_t(index)].op = MathOp(operation->currentData().toInt());
             edited(true, "Change Filter");

@@ -123,7 +123,7 @@ static void richFilters()
     QObject::connect(&editor, &FilterEditor::chainEdited, [&](const FilterChain &, const QString &t, const QString &m) { texts << t; merges << m; });
     int decorated = 0, extras = 0;
     Signal s = measure();
-    s.decorate = [&](int, const QString &, QWidget *label, QWidget *field) { CHECK(label && field); ++decorated; };
+    s.decorate = [&](int, const QString &, QWidget *label, QWidget *field) { CHECK(field); ++decorated; };
     s.extra = [&](int, const InteractionStage &) -> QWidget * { ++extras; return new QWidget; };
     FilterChain chain{InteractionStage::made(InteractionFilter::Curve), InteractionStage::made(InteractionFilter::Envelope),
                       InteractionStage::made(InteractionFilter::Average)};

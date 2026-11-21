@@ -44,7 +44,8 @@ struct Signal {
   std::function<double(double)> sent;             // what a value becomes when it is sent: a switch is 0 or 1, a count is rounded (none: as is)
   std::function<QString(double)> text;            // a value as text, in the bars
   std::vector<InteractionFilter> offered;         // the filters worth adding to it (empty: all of them)
-  // An application can attach to each setting of a card (the key: a, b, c, d): a preset, a link… (the card's number, the name's label and the field)
+  // An application can attach to each control of a card (the key: a, b, c, d for the settings, "op" for a Math's operation, "enable" for its box;
+  // the label is null for the last two): a preset, a link…
   std::function<void(int index, const QString &key, QWidget *label, QWidget *field)> decorate;
   // And add something under the settings of a card (it takes the widget)
   std::function<QWidget *(int index, const InteractionStage &stage)> extra;
@@ -69,6 +70,8 @@ public:
   void setTrace(bool available, double input, const std::vector<double> &afterEach);
   // Changes the chain from outside, as an edit (the signals tell it): `merge` joins a drag's steps into one undo step
   void editStage(int index, const std::function<void(InteractionStage &)> &fn, const QString &text, const QString &merge = {}, bool final = true);
+  // The list as high as its cards, with no scroll bar of its own: for an editor inside a panel that scrolls
+  void setFitContent(bool on);
   void renameFilter(int index, const QString &name);
   // The range of the signal after the first `count` filters: a Remap writes its Out range, a Clamp its ends, a curve or a threshold 0 to 1
   static std::pair<double, double> spanAfter(const FilterChain &chain, double lo, double hi, size_t count);
@@ -103,7 +106,7 @@ private:
   QPushButton *add;
   QToolButton *clear;
   QListWidget *list;
-  bool rebuilding = false;
+  bool rebuilding = false, fitContent = false;
   double outLo = 0, outHi = 1; // the range of the bar after the filters
   std::vector<std::pair<int, curveview::CurveLane *>> curveLanes; // a Curve card's editor, with its place in the chain
 };
