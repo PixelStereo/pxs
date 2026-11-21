@@ -107,6 +107,13 @@ set_target_properties(pxs_dmxview PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_COD
 target_include_directories(pxs_dmxview PUBLIC src/dmxview)
 target_link_libraries(pxs_dmxview PUBLIC Qt6::Widgets)
 
+# The panel that edits a list of DMX outputs, the same in every application that sends DMX. Qt Widgets.
+add_library(pxs_dmxoutview STATIC src/dmxoutview/OutputsPanel.cpp src/dmxoutview/pxs/OutputsPanel.h)
+add_library(pxs::dmxoutview ALIAS pxs_dmxoutview)
+set_target_properties(pxs_dmxoutview PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pxs_dmxoutview PUBLIC src/dmxoutview)
+target_link_libraries(pxs_dmxoutview PUBLIC pxs::dmxout Qt6::Widgets)
+
 # MIDI: the messages as interaction events (parse, build, learn), the ports and the inputs to listen to. The ports need an RtMidi,
 # which pxs does not carry: an application that has one (it may patch or vendor it) names its target before add_subdirectory,
 #   set(PXS_RTMIDI_TARGET rtmidi)
@@ -163,6 +170,10 @@ if(PXS_BUILD_TESTS)
     add_executable(pxs_dmxout_test test/dmxout_test.cpp)
     target_link_libraries(pxs_dmxout_test PRIVATE pxs::dmxout pxs::dmxnet)
     add_test(NAME dmxout COMMAND pxs_dmxout_test)
+    add_executable(pxs_dmxoutview_test test/dmxoutview_test.cpp)
+    target_link_libraries(pxs_dmxoutview_test PRIVATE pxs::dmxoutview Qt6::Test)
+    add_test(NAME dmxoutview COMMAND pxs_dmxoutview_test)
+    set_tests_properties(dmxoutview PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     add_executable(pxs_midi_test test/midi_test.cpp)
     target_link_libraries(pxs_midi_test PRIVATE pxs::midi)
     add_test(NAME midi COMMAND pxs_midi_test)
