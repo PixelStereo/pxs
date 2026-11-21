@@ -569,4 +569,6 @@ void CurveLane::contextMenuEvent(QContextMenuEvent *e)
     }
 }
 
+int nextGesture() { return ++s_gestures; }
+
 } // namespace pxs::curveview

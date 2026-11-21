@@ -82,6 +82,9 @@ private:
     std::function<double()> m_current;
 };
 
+// A number for each drag of a lane (the edits of one drag share it: one undo step); other lanes of the application draw theirs here
+int nextGesture();
+
 // The name of a key's curve towards the next key: an easing, Bézier, hold
 QString animCurveName(int curve);
 
