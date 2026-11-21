@@ -1,5 +1,7 @@
 #include "pxs/FilterEditor.h"
 #include "pxs/SignalMeter.h"
+#include "pxs/CurveLane.h"
+#include "pxs/AdsrCurve.h"
 
 #include <QApplication>
 #include <QDragEnterEvent>
@@ -112,6 +114,45 @@ static void reorder()
     CHECK(last.size() == 3 && last[2].kind == InteractionFilter::Average && last[0].kind == InteractionFilter::Hold);
 }
 
+static void richFilters()
+{
+    FilterEditor editor;
+    editor.resize(360, 900);
+    editor.show();
+    QStringList texts, merges;
+    QObject::connect(&editor, &FilterEditor::chainEdited, [&](const FilterChain &, const QString &t, const QString &m) { texts << t; merges << m; });
+    int decorated = 0, extras = 0;
+    Signal s = measure();
+    s.decorate = [&](int, const QString &, QWidget *label, QWidget *field) { CHECK(label && field); ++decorated; };
+    s.extra = [&](int, const InteractionStage &) -> QWidget * { ++extras; return new QWidget; };
+    FilterChain chain{InteractionStage::made(InteractionFilter::Curve), InteractionStage::made(InteractionFilter::Envelope),
+                      InteractionStage::made(InteractionFilter::Average)};
+    editor.setSignal(s, chain);
+    CHECK(editor.findChildren<pxs::curveview::CurveLane *>().size() == 1); // the curve editor of the Curve filter
+    CHECK(editor.findChild<QWidget *>("adsrCurve") != nullptr); // the envelope in the hand
+    CHECK(decorated > 0 && extras == 3);
+    // The signal going into the curve marks it
+    editor.setTrace(true, 0.4, {0.4, 0.4, 0.4});
+    // A name: shown with the type, and told
+    editor.renameFilter(2, "Calm");
+    CHECK(editor.chain()[2].name == "Calm" && texts.back() == "Rename Filter");
+    // A setting edited as a drag: one merge key, and the last step final
+    editor.editStage(2, [](InteractionStage &st) { st.a = 0.5; }, "Change Filter", "filter2/0", false);
+    CHECK(texts.back() == "Change Filter" && merges.back() == "filter2/0" && editor.chain()[2].a == 0.5);
+    // The ranges follow the chain
+    FilterChain remapped{InteractionStage::remap(0, 0.3, 0, 1)};
+    CHECK(FilterEditor::spanAfter(remapped, 0, 1, 1) == std::make_pair(0.0, 1.0));
+    FilterChain clamped{InteractionStage::made(InteractionFilter::Clamp)};
+    clamped[0].a = 0.2;
+    clamped[0].b = 0.6;
+    CHECK(FilterEditor::spanAfter(clamped, 0, 1, 1) == std::make_pair(0.2, 0.6));
+    CHECK(FilterEditor::spanAfter(clamped, 0, 1, 0) == std::make_pair(0.0, 1.0)); // before it: as it comes in
+    // The bar after the filters follows: a signal at the top of a clamp's range is full
+    editor.setSignal(measure(), clamped);
+    editor.setTrace(true, 0.6, {0.6});
+    CHECK(bars(editor).back()->value() == 1000);
+}
+
 static void infos()
 {
     for (int k = 0; k < kInteractionFilterCount; ++k) {
@@ -128,6 +169,7 @@ int main(int argc, char **argv)
     sentValue();
     editsAreTold();
     reorder();
+    richFilters();
     infos();
     if (failures) return 1;
     std::printf("filterview passed\n");

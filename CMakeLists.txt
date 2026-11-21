@@ -107,12 +107,19 @@ set_target_properties(pxs_dmxview PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_COD
 target_include_directories(pxs_dmxview PUBLIC src/dmxview)
 target_link_libraries(pxs_dmxview PUBLIC Qt6::Widgets)
 
+# Curves on screen: the keys of an animation track (click, drag, draw, easings, Bézier) and the ADSR envelope to take in the hand. From NyxMap. Qt Widgets.
+add_library(pxs_curveview STATIC src/curveview/CurveLane.cpp src/curveview/pxs/CurveLane.h src/curveview/pxs/AdsrCurve.h)
+add_library(pxs::curveview ALIAS pxs_curveview)
+set_target_properties(pxs_curveview PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pxs_curveview PUBLIC src/curveview)
+target_link_libraries(pxs_curveview PUBLIC pxs::interaction Qt6::Widgets)
+
 # The chain of filters of one signal on screen: cards to fold, move by drag and set, with the signal before and after. From MpOsc. Qt Widgets.
 add_library(pxs_filterview STATIC src/filterview/FilterEditor.cpp src/filterview/pxs/FilterEditor.h src/filterview/pxs/SignalMeter.h)
 add_library(pxs::filterview ALIAS pxs_filterview)
 set_target_properties(pxs_filterview PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
 target_include_directories(pxs_filterview PUBLIC src/filterview)
-target_link_libraries(pxs_filterview PUBLIC pxs::interaction pxs::widgets Qt6::Widgets)
+target_link_libraries(pxs_filterview PUBLIC pxs::interaction pxs::widgets pxs::curveview Qt6::Widgets)
 
 # The panel that edits a list of DMX outputs, the same in every application that sends DMX. Qt Widgets.
 add_library(pxs_dmxoutview STATIC src/dmxoutview/OutputsPanel.cpp src/dmxoutview/pxs/OutputsPanel.h)

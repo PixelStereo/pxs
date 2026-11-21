@@ -2,6 +2,8 @@
 
 #include "Fields.h"
 #include "pxs/SignalMeter.h"
+#include "pxs/CurveLane.h"
+#include "pxs/AdsrCurve.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -11,6 +13,9 @@
 #include <QDragMoveEvent>
 #include <QDropEvent>
 #include <QHBoxLayout>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QSignalBlocker>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
@@ -25,6 +30,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
+#include <tuple>
 
 namespace pxs::filterview {
 
@@ -98,6 +104,20 @@ private:
     int dropRow = -1;
 };
 
+// A setting's name: a double click brings the setting back to its default
+class ResetLabel : public QLabel {
+public:
+    std::function<void()> reset;
+    using QLabel::QLabel;
+
+protected:
+    void mouseDoubleClickEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton && reset) reset();
+        else QLabel::mouseDoubleClickEvent(event);
+    }
+};
+
 // What a card is made of: a fold button, its on / off box, its name, a remove button, then its settings
 class FilterCard : public QWidget {
 public:
@@ -108,12 +128,15 @@ public:
     bool unfolded;
 
     // The height it takes: added up by hand, the layouts of a card that is not shown yet answer too small
+    int rows = 0, extras = 0, extraHeight = 0; // setting rows (a line each), then the bigger things under them (a curve, an envelope)
+    std::function<void()> rename;               // a double click on its name
     int height()
     {
         auto *outer = static_cast<QVBoxLayout *>(layout());
         auto *inner = static_cast<QVBoxLayout *>(body->layout());
         int total = outer->contentsMargins().top() + outer->contentsMargins().bottom() + outer->itemAt(0)->sizeHint().height();
-        if (unfolded && inner->count() > 0) total += outer->spacing() + int(inner->count()) * 26 + (int(inner->count()) - 1) * inner->spacing();
+        const int items = rows + extras;
+        if (unfolded && items > 0) total += outer->spacing() + rows * 26 + extraHeight + (items - 1) * inner->spacing();
         return total;
     }
 
@@ -138,7 +161,8 @@ public:
         enabled->setChecked(stage.enabled);
         enabled->setToolTip("This filter on or off");
         enabled->setAccessibleName("Filter on");
-        name = new QLabel(stage.displayName());
+        name = new QLabel(stage.name.isEmpty() ? stage.displayName() : QStringLiteral("%1 (%2)").arg(stage.name, interactionFilterName(stage.kind)));
+        name->setToolTip("Double-click to rename");
         name->setAttribute(Qt::WA_TransparentForMouseEvents); // a drag from the name moves the card
         remove = new QToolButton;
         remove->setText(QStringLiteral("×"));
@@ -163,6 +187,11 @@ public:
     }
 
 protected:
+    void mouseDoubleClickEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton && name->geometry().contains(event->position().toPoint()) && rename) rename();
+        else QWidget::mouseDoubleClickEvent(event);
+    }
     void mousePressEvent(QMouseEvent *event) override
     {
         if (event->button() == Qt::LeftButton) pressed = event->position().toPoint();
@@ -300,7 +329,7 @@ FilterEditor::FilterEditor(QWidget *parent) : QWidget(parent)
         filters.clear();
         open.clear();
         rebuild();
-        edited(true);
+        edited(true, "Clear Filters");
     });
     // A card dropped between two others: the chain follows (rebuilt once the drag is over: the card dragged is one of the list's)
     cards->moved = [this](int from, int before) {
@@ -314,7 +343,7 @@ FilterEditor::FilterEditor(QWidget *parent) : QWidget(parent)
             filters.insert(filters.begin() + to, stage);
             open.insert(open.begin() + to, unfolded);
             rebuild();
-            edited(true);
+            edited(true, "Move Filter");
         });
     };
     clearSignal();
@@ -348,7 +377,7 @@ void FilterEditor::setSignal(const Signal &signal, const FilterChain &chain)
     list->setVisible(true);
     input->setVisible(true);
     showValue(input, false, 0);
-    showValue(output, false, 0);
+    showValue(output, false, 0, true);
     auto *menu = new QMenu(add);
     if (!spec.invert.empty()) {
         auto *invert = menu->addAction("Invert", this, [this] {
@@ -357,7 +386,7 @@ void FilterEditor::setSignal(const Signal &signal, const FilterChain &chain)
                 open.push_back(false);
             }
             rebuild();
-            edited(true);
+            edited(true, "Add Filter");
         });
         invert->setToolTip("Flips the signal");
         if (menuWatcher) menuWatcher(menu);
@@ -372,14 +401,15 @@ void FilterEditor::setSignal(const Signal &signal, const FilterChain &chain)
     rebuild();
 }
 
-int FilterEditor::levelOf(double value) const
+int FilterEditor::levelOf(double value, bool afterFilters) const
 {
     const double sent = spec.sent ? spec.sent(value) : value;
-    const double at = spec.hi > spec.lo ? (sent - spec.lo) / (spec.hi - spec.lo) : 0.0;
+    const double lo = afterFilters ? outLo : spec.lo, hi = afterFilters ? outHi : spec.hi;
+    const double at = hi > lo ? (sent - lo) / (hi - lo) : 0.0;
     return int(std::lround(1000 * std::clamp(at, 0.0, 1.0)));
 }
 
-void FilterEditor::showValue(QProgressBar *bar, bool available, double value)
+void FilterEditor::showValue(QProgressBar *bar, bool available, double value, bool afterFilters)
 {
     if (!available) {
         bar->setFormat(QStringLiteral("—"));
@@ -388,28 +418,43 @@ void FilterEditor::showValue(QProgressBar *bar, bool available, double value)
     }
     const double sent = spec.sent ? spec.sent(value) : value;
     bar->setFormat(spec.text ? spec.text(sent) : QString::number(sent, 'f', 3));
-    bar->setValue(levelOf(value));
+    bar->setValue(levelOf(value, afterFilters));
 }
 
 void FilterEditor::setTrace(bool available, double value, const std::vector<double> &afterEach)
 {
     showValue(input, available, value);
-    showValue(output, available, afterEach.empty() ? value : afterEach.back());
+    showValue(output, available, afterEach.empty() ? value : afterEach.back(), true);
     // The signal as it came in, marked on the bar after the filters: how far they have taken it
-    output->setReference(available, levelOf(value));
+    output->setReference(available, levelOf(value, true));
+    // A curve's own square shows where the signal that goes into it stands
+    for (const auto &[index, lane] : curveLanes) {
+        const double in = index == 0 ? value : index - 1 < int(afterEach.size()) ? afterEach[size_t(index - 1)] : value;
+        lane->setPlayhead(in, available);
+    }
 }
 
 void FilterEditor::addFilter(InteractionFilter kind)
 {
-    filters.push_back(InteractionStage::made(kind));
+    const auto [lo, hi] = spanAfter(filters, spec.lo, spec.hi, filters.size());
+    const double tgtLo = std::isnan(spec.targetLo) ? spec.lo : spec.targetLo, tgtHi = std::isnan(spec.targetHi) ? spec.hi : spec.targetHi;
+    filters.push_back(kind == InteractionFilter::Remap ? InteractionStage::remap(lo, hi, tgtLo, tgtHi) : InteractionStage::made(kind));
     open.push_back(true);
     rebuild();
-    edited(true);
+    edited(true, "Add Filter");
 }
 
-void FilterEditor::edited(bool final)
+void FilterEditor::edited(bool final, const QString &text, const QString &merge)
 {
+    updateSpan();
+    emit chainEdited(filters, text, merge);
     emit chainChanged(filters, final);
+}
+
+void FilterEditor::updateSpan()
+{
+    std::tie(outLo, outHi) = spanAfter(filters, spec.lo, spec.hi, filters.size());
+    if (output) output->setRange(0, 1000);
 }
 
 void FilterEditor::fitItems()
@@ -433,6 +478,8 @@ void FilterEditor::rebuild()
 {
     rebuilding = true;
     list->clear();
+    curveLanes.clear();
+    updateSpan();
     for (size_t i = 0; i < filters.size(); ++i) addCard(int(i));
     fitItems();
     output->setVisible(active && !filters.empty());
@@ -459,59 +506,176 @@ void FilterEditor::addCard(int index)
     });
     connect(card->enabled, &QCheckBox::toggled, this, [this, index](bool on) {
         filters[size_t(index)].enabled = on;
-        edited(true);
+        edited(true, "Change Filter");
     });
     connect(card->remove, &QToolButton::clicked, this, [this, index] {
         QTimer::singleShot(0, this, [this, index] {
             filters.erase(filters.begin() + index);
             open.erase(open.begin() + index);
             rebuild();
-            edited(true);
+            edited(true, "Remove Filter");
         });
     });
-    auto &stage = filters[size_t(index)];
+    card->rename = [this, index] {
+        if (index >= int(filters.size())) return;
+        bool ok = false;
+        const QString text = QInputDialog::getText(this, "Rename Filter", "Name (empty: its type)", QLineEdit::Normal, filters[size_t(index)].name, &ok);
+        if (ok) renameFilter(index, text.trimmed());
+    };
+    const auto &stage = filters[size_t(index)];
     auto *body = static_cast<QVBoxLayout *>(card->body->layout());
-    const auto addRow = [&](const QString &label, QWidget *field) {
+    const auto addRow = [&](QWidget *label, QWidget *field) {
         auto *row = new QHBoxLayout;
-        auto *text = new QLabel(label);
-        text->setMinimumWidth(64);
-        row->addWidget(text);
+        label->setMinimumWidth(64);
+        row->addWidget(label);
         row->addWidget(field, 1);
         body->addLayout(row);
+        ++card->rows;
+    };
+    const auto addExtra = [&](QWidget *widget, int height) {
+        body->addWidget(widget);
+        ++card->extras;
+        card->extraHeight += height;
     };
     if (stage.kind == InteractionFilter::Math) {
         auto *operation = new QComboBox;
         for (int op = 0; op < kMathOpCount; ++op) operation->addItem(mathOpName(MathOp(op)), op);
         operation->setCurrentIndex(int(stage.op));
-        addRow("Operation", operation);
+        addRow(new QLabel("Operation"), operation);
         connect(operation, &QComboBox::activated, this, [this, index, operation](int) {
             filters[size_t(index)].op = MathOp(operation->currentData().toInt());
-            edited(true);
+            edited(true, "Change Filter");
             QTimer::singleShot(0, this, [this] { rebuild(); }); // its value is there only for the operations that use one
         });
     }
+    const auto [srcLo, srcHi] = spanBefore(index);
+    const double tgtLo = std::isnan(spec.targetLo) ? spec.lo : spec.targetLo, tgtHi = std::isnan(spec.targetHi) ? spec.hi : spec.targetHi;
     for (int k = 0; k < kFilterSettingCount; ++k) {
         const auto setting = interactionFilterSetting(stage.kind, k);
         if (setting.name.isEmpty()) continue;
         if (stage.kind == InteractionFilter::Math && !mathOpUsesValue(stage.op)) continue;
+        // A Remap's In slides over the range of what comes in, its Out over the signal's own range
+        const bool remap = stage.kind == InteractionFilter::Remap;
+        const double from = remap ? (k < 2 ? srcLo : tgtLo) : setting.min, to = remap ? (k < 2 ? srcHi : tgtHi) : setting.max;
         auto *field = new SliderField;
-        field->setDecimals(3);
-        field->setRange(setting.min, setting.max);
-        if (setting.suffix.trimmed() == "s") field->setTypedRange(setting.min, std::max(setting.max, 600.0));
-        field->setSingleStep((setting.max - setting.min) / 100);
+        field->setDecimals(stage.kind == InteractionFilter::Steps ? 0 : 3);
+        field->setRange(std::min(from, to), std::max(from, to));
+        field->setTypedRange(-1e6, 1e6); // any value can be typed: a filter's setting has no limit of its own
+        field->setSingleStep(std::max(0.001, std::abs(to - from) / 100));
         field->setSuffix(setting.suffix);
         field->setValue(stage.setting(k));
-        addRow(setting.name, field);
+        field->setObjectName(QStringLiteral("filter%1%2").arg(index).arg(QChar('a' + k)));
+        const double def = !remap ? setting.def : k == 0 ? srcLo : k == 1 ? srcHi : k == 2 ? tgtLo : tgtHi;
+        auto *label = new ResetLabel(setting.name);
+        label->setToolTip("Double-click: back to its default");
+        label->reset = [this, index, k, def, field] {
+            field->setValue(def);
+            editStage(index, [k, def](InteractionStage &s) { s.setting(k) = def; }, "Reset Filter", {}, true);
+        };
+        addRow(label, field);
+        if (spec.decorate) spec.decorate(index, QString(QChar('a' + k)), label, field);
         connect(field, &SliderField::valueEdited, this, [this, index, k](double v) {
-            filters[size_t(index)].setting(k) = v;
-            edited(false);
+            editStage(index, [k, v](InteractionStage &s) { s.setting(k) = v; }, "Change Filter", QStringLiteral("filter%1/%2").arg(index).arg(k), false);
         });
         connect(field, &SliderField::editingFinished, this, [this, index, k](double v) {
-            filters[size_t(index)].setting(k) = v;
-            edited(true);
+            editStage(index, [k, v](InteractionStage &s) { s.setting(k) = v; }, "Change Filter", QStringLiteral("filter%1/%2").arg(index).arg(k), true);
         });
+    }
+    if (stage.kind == InteractionFilter::Envelope) { // in the hand: the four settings above follow it
+        auto *curve = new curveview::AdsrCurve;
+        curve->longest = 5;
+        curveview::AdsrCurve::Values shape;
+        shape.attack = stage.a;
+        shape.decay = stage.b;
+        shape.sustain = stage.c;
+        shape.release = stage.d;
+        curve->setValues(shape);
+        curve->edited = [this, card, index](const curveview::AdsrCurve::Values &v) {
+            const double values[4] = {v.attack, v.decay, v.sustain, v.release};
+            for (int which = 0; which < 4; ++which)
+                if (auto *field = card->body->findChild<SliderField *>(QStringLiteral("filter%1%2").arg(index).arg(QChar('a' + which)))) {
+                    const QSignalBlocker quiet(field);
+                    field->setValue(values[which]);
+                }
+            editStage(index, [v](InteractionStage &s) {
+                s.a = v.attack;
+                s.b = v.decay;
+                s.c = v.sustain;
+                s.d = v.release;
+            }, "Change Filter", QStringLiteral("filter%1/curve").arg(index), false);
+        };
+        addExtra(curve, curve->minimumHeight());
+    }
+    if (stage.kind == InteractionFilter::Curve) {
+        // The curve editor, its whole square shown (0..1 in, 0..1 out, a margin around); the signal that goes in marks it
+        auto *straight = new QPushButton("Straight");
+        straight->setToolTip("Back to a straight line");
+        addExtra(straight, 26);
+        connect(straight, &QPushButton::clicked, this, [this, index] {
+            editStage(index, [](InteractionStage &s) { s.curve = Interaction::straightCurve(); }, "Reset Curve", {}, true);
+            QTimer::singleShot(0, this, [this] { rebuild(); });
+        });
+        auto *lane = new curveview::CurveLane;
+        lane->setObjectName(QStringLiteral("filterCurve%1").arg(index));
+        lane->setTrack(stage.curve, 1.0, 0.0, 1.0);
+        lane->setView(-0.03, 1.03, -0.08, 1.08);
+        lane->setFixedHeight(200);
+        lane->setToolTip("Across: what comes in · up: what goes out. Click to add a key, drag it, "
+                         "double-click to remove it; right-click: its curve (easing, Bézier, hold)");
+        addExtra(lane, 200);
+        curveLanes.push_back({index, lane});
+        connect(lane, &curveview::CurveLane::edited, this, [this, index](const AnimTrack &t, int gesture) {
+            editStage(index, [t](InteractionStage &s) {
+                s.curve.keys = t.keys;
+                for (AnimKey &key : s.curve.keys) key.t = std::clamp(key.t, 0.0, 1.0);
+            }, "Edit Curve", gesture ? QStringLiteral("curve%1/%2").arg(index).arg(gesture) : QString(), true);
+        });
+    }
+    if (spec.extra) {
+        if (auto *widget = spec.extra(index, stage)) addExtra(widget, widget->sizeHint().height());
     }
     card->layout()->activate();
 }
+
+void FilterEditor::editStage(int index, const std::function<void(InteractionStage &)> &fn, const QString &text, const QString &merge, bool final)
+{
+    if (index < 0 || index >= int(filters.size())) return;
+    fn(filters[size_t(index)]);
+    edited(final, text, merge);
+}
+
+void FilterEditor::renameFilter(int index, const QString &name)
+{
+    if (index < 0 || index >= int(filters.size())) return;
+    filters[size_t(index)].name = name;
+    rebuild();
+    edited(true, "Rename Filter");
+}
+
+// What a filter does to the range of the signal: a Remap writes its Out range, a Clamp keeps its two ends, the filters that
+// give 0 to 1 give that; the others leave it as it is
+std::pair<double, double> FilterEditor::spanAfter(const FilterChain &chain, double lo, double hi, size_t count)
+{
+    std::pair<double, double> span{lo, hi};
+    for (size_t k = 0; k < chain.size() && k < count; ++k) {
+        const InteractionStage &f = chain[k];
+        if (!f.enabled) continue;
+        switch (f.kind) {
+        case InteractionFilter::Remap: span = {std::min(f.c, f.d), std::max(f.c, f.d)}; break;
+        case InteractionFilter::Clamp: span = {std::min(f.a, f.b), std::max(f.a, f.b)}; break;
+        case InteractionFilter::Curve:
+        case InteractionFilter::Steps:
+        case InteractionFilter::Threshold:
+        case InteractionFilter::Toggle:
+        case InteractionFilter::PulseDetection:
+        case InteractionFilter::Envelope:
+        case InteractionFilter::Speed: span = {0.0, 1.0}; break;
+        default: break;
+        }
+    }
+    return span;
+}
+
+std::pair<double, double> FilterEditor::spanBefore(int index) const { return spanAfter(filters, spec.lo, spec.hi, size_t(index)); }
 
 } // namespace pxs::filterview
